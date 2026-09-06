@@ -1,6 +1,6 @@
 /**
  * @name ROSE-CustomWheel
- * @author Rose Team
+ * @author Krealos
  * @description Custom mod wheel for Pengu Loader - displays installed mods for hovered skins
  * @link https://github.com/Alban1911/ROSE-CustomWheel
  */

@@ -148,6 +148,36 @@ def write_historic_entry(champion_id: int, skin_or_chroma_id: Union[int, str]) -
         pass
 
 
+def replace_historic_maps(historic: Dict[str, Union[int, str]], targets: Dict[str, int]) -> bool:
+    """Overwrite both live historic files at once (used by skin profiles)."""
+    try:
+        hp = _historic_file_path()
+        hp.parent.mkdir(parents=True, exist_ok=True)
+        clean_historic: Dict[str, Union[int, str]] = {}
+        for k, v in (historic or {}).items():
+            try:
+                key = str(int(k))
+            except (TypeError, ValueError):
+                continue
+            if isinstance(v, int) or isinstance(v, str):
+                clean_historic[key] = v
+        with hp.open("w", encoding="utf-8") as f:
+            json.dump(clean_historic, f, ensure_ascii=False, indent=2)
+
+        tp = _historic_target_file_path()
+        clean_targets: Dict[str, int] = {}
+        for k, v in (targets or {}).items():
+            try:
+                clean_targets[str(int(k))] = int(v)
+            except (TypeError, ValueError):
+                continue
+        with tp.open("w", encoding="utf-8") as f:
+            json.dump(clean_targets, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
 def clear_historic_entry(champion_id: int) -> None:
     """Remove the historic entry for a champion if it exists."""
     try:

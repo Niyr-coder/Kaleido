@@ -85,6 +85,13 @@ def get_config_float(section: str, option: str, fallback: float) -> float:
         return fallback
 
 
+def get_config_bool(section: str, option: str, fallback: bool) -> bool:
+    value = get_config_option(section, option)
+    if value is None:
+        return fallback
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 def set_config_option(section: str, option: str, value: str) -> None:
     config_path = get_config_file_path()
     config = configparser.ConfigParser()
@@ -331,7 +338,9 @@ INTERESTING_PHASES = {
 
 ANALYTICS_SERVER_URL = 'https://analytics.rosekeys.site/'  # Analytics server endpoint
 ANALYTICS_PING_INTERVAL_S = 900  # Seconds between presence heartbeats (15 minutes)
-ANALYTICS_ENABLED = True  # Enable/disable analytics tracking
+ANALYTICS_ENABLED = True  # Hard switch. The user toggle is config.ini [General] analytics_enabled (default: off)
+ANALYTICS_USER_DEFAULT = False  # Default for the in-client "anonymous telemetry" toggle (opt-in)
+AUTO_UPDATE_USER_DEFAULT = True  # Default for the in-client "check for updates" toggle
 ANALYTICS_TIMEOUT_S = 30  # Request timeout in seconds
 
 # =============================================================================

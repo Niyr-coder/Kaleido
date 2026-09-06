@@ -1,6 +1,6 @@
 /**
  * @name Rose-PartyMode
- * @author Rose Team
+ * @author Krealos
  * @description Party Mode - See your friends' skins in game via P2P
  * @link https://github.com/Alban1911/Rose
  */

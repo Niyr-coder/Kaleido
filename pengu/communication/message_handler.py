@@ -18,7 +18,14 @@ from pathlib import Path, PureWindowsPath
 from typing import Optional
 from urllib.parse import quote
 
-from config import get_config_float, get_config_option, set_config_option
+from config import (
+    get_config_float,
+    get_config_option,
+    get_config_bool,
+    set_config_option,
+    ANALYTICS_USER_DEFAULT,
+    AUTO_UPDATE_USER_DEFAULT,
+)
 from injection.mods.storage import ModStorageService
 from utils.core.paths import get_user_data_dir, get_asset_path, get_injection_dir, open_folder_in_explorer
 from utils.core.issue_reporter import clear_issues, read_issues_tail
@@ -220,6 +227,18 @@ class MessageHandler:
             self._handle_open_pengu_loader_ui(payload)
         elif payload_type == "settings-save":
             self._handle_settings_save(payload)
+        elif payload_type == "profiles-request":
+            self._handle_profiles_request(payload)
+        elif payload_type == "profile-switch":
+            self._handle_profile_action(payload, "switch")
+        elif payload_type == "profile-create":
+            self._handle_profile_action(payload, "create")
+        elif payload_type == "profile-rename":
+            self._handle_profile_action(payload, "rename")
+        elif payload_type == "profile-delete":
+            self._handle_profile_action(payload, "delete")
+        elif payload_type == "profile-remove-entry":
+            self._handle_profile_action(payload, "remove-entry")
         elif payload_type == "add-custom-mods-category-selected":
             self._handle_add_custom_mods_category_selected(payload)
         elif payload_type == "add-custom-mods-champion-selected":
@@ -417,6 +436,8 @@ class MessageHandler:
                 "hasErrors": len(diagnostics_errors) > 0,
                 "errorsCount": len(diagnostics_errors),
                 "version": APP_VERSION,
+                "analyticsEnabled": get_config_bool("General", "analytics_enabled", ANALYTICS_USER_DEFAULT),
+                "autoUpdate": get_config_bool("General", "auto_update", AUTO_UPDATE_USER_DEFAULT),
             }
             self._send_response(json.dumps(response_payload))
             
@@ -2104,6 +2125,15 @@ class MessageHandler:
             
             set_config_option("General", "monitor_auto_resume_timeout", str(monitor_auto_resume_timeout))
             log.info(f"[SkinMonitor] Monitor auto-resume timeout updated to {monitor_auto_resume_timeout}s")
+
+            if "analyticsEnabled" in payload:
+                analytics_enabled = bool(payload.get("analyticsEnabled"))
+                set_config_option("General", "analytics_enabled", "true" if analytics_enabled else "false")
+                log.info(f"[SkinMonitor] Anonymous telemetry {'enabled' if analytics_enabled else 'disabled'} via settings panel")
+            if "autoUpdate" in payload:
+                auto_update = bool(payload.get("autoUpdate"))
+                set_config_option("General", "auto_update", "true" if auto_update else "false")
+                log.info(f"[SkinMonitor] Update check on startup {'enabled' if auto_update else 'disabled'} via settings panel")
             
             if game_path and game_path.strip():
                 if not self._is_valid_local_league_path(game_path):
@@ -2155,6 +2185,110 @@ class MessageHandler:
             log.error(f"[SkinMonitor] Failed to handle settings save: {e}")
             self._send_settings_save_error(str(e))
     
+    # ------------------------------------------------------------------
+    # Skin profiles (Kaleido feature)
+    # ------------------------------------------------------------------
+    def _build_profiles_payload(self, error: Optional[str] = None) -> dict:
+        from utils.core import profiles as skin_profiles
+        from utils.core.historic import is_custom_mod_path, get_custom_mod_path
+
+        entries_out = []
+        for entry in skin_profiles.get_active_entries():
+            value = entry.get("value")
+            item = {
+                "championId": entry["championId"],
+                "isCustom": False,
+                "skinId": None,
+                "skinName": None,
+            }
+            if is_custom_mod_path(value):
+                item["isCustom"] = True
+                custom_path = str(get_custom_mod_path(value) or "")
+                item["skinName"] = Path(custom_path).name or custom_path
+            else:
+                try:
+                    skin_id = int(value)
+                except (TypeError, ValueError):
+                    skin_id = None
+                item["skinId"] = skin_id
+                if skin_id is not None:
+                    name = None
+                    try:
+                        mapping = getattr(self.skin_processor, "skin_mapping", None)
+                        if mapping:
+                            name = mapping.find_skin_name_by_skin_id(skin_id)
+                            if not name:
+                                chroma_map = None
+                                cache = getattr(self.skin_scraper, "cache", None) if self.skin_scraper else None
+                                if cache is not None:
+                                    chroma_map = getattr(cache, "chroma_id_map", None)
+                                chroma_info = chroma_map.get(skin_id) if isinstance(chroma_map, dict) else None
+                                if isinstance(chroma_info, dict) and chroma_info.get("name"):
+                                    name = str(chroma_info.get("name"))
+                                else:
+                                    base_id = get_base_skin_id_for_chroma(skin_id, chroma_map)
+                                    if base_id and base_id != skin_id:
+                                        base_name = mapping.find_skin_name_by_skin_id(base_id)
+                                        if base_name:
+                                            name = f"{base_name} (chroma)"
+                    except Exception:
+                        name = None
+                    item["skinName"] = name
+            entries_out.append(item)
+
+        return {
+            "type": "profiles-data",
+            "active": skin_profiles.get_active_profile_name(),
+            "profiles": skin_profiles.list_profiles(),
+            "entries": entries_out,
+            "error": error,
+        }
+
+    def _handle_profiles_request(self, payload: dict) -> None:
+        try:
+            self._send_response(json.dumps(self._build_profiles_payload()))
+        except Exception as e:
+            log.error(f"[Profiles] Failed to build profiles data: {e}")
+
+    def _handle_profile_action(self, payload: dict, action: str) -> None:
+        from utils.core import profiles as skin_profiles
+
+        ok, message = False, "Unknown action"
+        try:
+            name = payload.get("name")
+            if action == "switch":
+                ok, message = skin_profiles.switch_profile(str(name or ""))
+            elif action == "create":
+                ok, message = skin_profiles.create_profile(
+                    str(name or ""), copy_current=bool(payload.get("copyCurrent", False))
+                )
+            elif action == "rename":
+                ok, message = skin_profiles.rename_profile(str(name or ""), str(payload.get("newName") or ""))
+            elif action == "delete":
+                ok, message = skin_profiles.delete_profile(str(name or ""))
+            elif action == "remove-entry":
+                ok, message = skin_profiles.remove_entry(int(payload.get("championId")))
+        except Exception as e:
+            ok, message = False, str(e)
+
+        if ok:
+            log.info(f"[Profiles] {action}: {message} (payload={ {k: v for k, v in payload.items() if k != 'type'} })")
+            if action in ("switch", "create", "delete"):
+                # The active map changed: let the historic handler re-evaluate on the next lock.
+                try:
+                    self.shared_state.historic_mode_active = False
+                    self.shared_state.historic_skin_id = None
+                    self.shared_state.historic_first_detection_done = False
+                except Exception:
+                    pass
+        else:
+            log.warning(f"[Profiles] {action} failed: {message}")
+
+        try:
+            self._send_response(json.dumps(self._build_profiles_payload(None if ok else message)))
+        except Exception as e:
+            log.error(f"[Profiles] Failed to send profiles data: {e}")
+
     def _handle_skin_detection(self, payload: dict) -> None:
         """Handle skin detection message"""
         skin_name = payload.get("skin")

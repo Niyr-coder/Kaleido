@@ -118,6 +118,16 @@ class UpdateSequence:
         Returns:
             True if update was installed, False otherwise
         """
+        # User toggle from the in-client settings panel (config.ini [General] auto_update)
+        try:
+            from config import get_config_bool, AUTO_UPDATE_USER_DEFAULT
+            if not get_config_bool("General", "auto_update", AUTO_UPDATE_USER_DEFAULT):
+                status_callback("Update check disabled in settings")
+                updater_log.info("Update check skipped: disabled by user setting.")
+                return False
+        except Exception:  # noqa: BLE001
+            pass
+
         status_callback("Checking for updates...")
         
         # Check for latest release

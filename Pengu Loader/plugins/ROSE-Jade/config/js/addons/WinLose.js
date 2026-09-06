@@ -4,7 +4,7 @@ let data = [
   {
     groupName: "RoseWL",
     titleKey: "el_RoseWL",
-    titleName: "Rose / WinLose",
+    titleName: "Kaleido / WinLose",
     capitalTitleKey: "el_RoseWL_capital",
     capitalTitleName: "Rose / WinLose",
     element: [

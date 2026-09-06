@@ -432,7 +432,7 @@ import { settingsUtils } from "https://unpkg.com/blank-settings-utils@latest/Set
         {
             groupName: "RoseAA",
             titleKey: "el_RoseAA",
-            titleName: "Rose / AutoAccept",
+            titleName: "Kaleido / AutoAccept",
             capitalTitleKey: "el_RoseAA_capital", 
             capitalTitleName: "Rose / AutoAccept",
             element: [

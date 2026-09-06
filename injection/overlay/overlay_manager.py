@@ -145,7 +145,7 @@ class OverlayManager:
                 'overlay_path': str(self.mods_dir.parent),
                 'mods': '/'.join(mod_names or ()),
             },
-            hint='Free up disk space on the drive containing Rose injection files, then retry the skin.',
+            hint='Free up disk space on the drive containing Kaleido injection files, then retry the skin.',
         )
         return True
     
@@ -289,7 +289,7 @@ class OverlayManager:
                 "error",
                 "Injection failed while preparing the overlay.",
                 details={"error": str(e)},
-                hint="Check Rose logs for details, then retry.",
+                hint="Check Kaleido logs for details, then retry.",
             )
             self._report_low_disk_space_failure(output_lines + error_lines, mod_names)
             return 1

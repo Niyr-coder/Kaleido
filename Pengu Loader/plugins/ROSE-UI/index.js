@@ -1,6 +1,6 @@
 /**
  * @name Rose-UI
- * @author Rose Team
+ * @author Krealos
  * @description Interface unlocker for Pengu Loader
  * @link https://github.com/Alban1911/Rose-UI
  */
@@ -12,7 +12,7 @@
   const CHROMA_CONTAINER_CLASS = "lpp-chroma-container";
   const VISIBLE_OFFSETS = new Set([0, 1, 2, 3, 4]);
 
-  const DISCORD_INVITE_URL = "https://discord.com/invite/roseskins";
+  const DISCORD_INVITE_URL = "https://discord.gg/bsb8yEAMpE";
   const ROSE_DISCORD_GUILD_ID = "1490473857075642621";
   const ROSE_GITHUB_REPO_API_URL =
     "https://api.github.com/repos/Alban1911/Rose";

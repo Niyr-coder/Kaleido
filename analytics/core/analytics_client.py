@@ -10,8 +10,10 @@ from config import (
     ANALYTICS_ENABLED,
     ANALYTICS_SERVER_URL,
     ANALYTICS_TIMEOUT_S,
+    ANALYTICS_USER_DEFAULT,
     APP_USER_AGENT,
     APP_VERSION,
+    get_config_bool,
 )
 from utils.core.logging import get_logger
 from .install_id import get_install_id
@@ -42,6 +44,9 @@ class AnalyticsClient:
         """Send one activity or presence notification."""
         if not self.enabled:
             log.debug("Analytics is disabled, skipping ping")
+            return False
+        if not get_config_bool("General", "analytics_enabled", ANALYTICS_USER_DEFAULT):
+            log.debug("Analytics disabled by user setting, skipping ping")
             return False
 
         payload = {

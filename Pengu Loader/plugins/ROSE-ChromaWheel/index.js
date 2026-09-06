@@ -1,6 +1,6 @@
 /**
  * @name Rose-ChromaWheel
- * @author Rose Team
+ * @author Krealos
  * @description Chroma wheel for Pengu Loader
  * @link https://github.com/Alban1911/Rose-ChromaWheel
  */

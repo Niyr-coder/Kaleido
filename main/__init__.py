@@ -13,7 +13,7 @@ from pathlib import Path
 MIN_PYTHON = (3, 11)
 if sys.version_info < MIN_PYTHON:
     raise RuntimeError(
-        f"Rose requires Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} or newer. "
+        f"Kaleido requires Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} or newer. "
         "Please upgrade your interpreter and rebuild the application."
     )
 
@@ -68,7 +68,7 @@ def _show_dll_dialog_legacy(tools_dir, reason="missing") -> bool:
     tools_dir.mkdir(parents=True, exist_ok=True)
     
     if reason == "invalid":
-        title = "Rose - Broken DLL"
+        title = "Kaleido - Broken DLL"
         header = "Broken File: cslol-dll.dll"
         body = (
             "The file you put in the folder is broken, outdated, or wrong.\n"
@@ -77,21 +77,21 @@ def _show_dll_dialog_legacy(tools_dir, reason="missing") -> bool:
             "1. Download a NEW 'cslol-dll.dll' from the internet.\n"
             "2. Click the [ Open Folder ] button below.\n"
             "3. Delete the old file and put the new correct one there.\n"
-            "4. Restart Rose.\n\n"
+            "4. Restart Kaleido.\n\n"
             "WARNING: Do NOT ask for and do NOT share this file on our Discord.\n"
             "This file is NOT available in there due DMCA (license) restrictions!\n"
             "Instead, you will be banned permanently."
         )
     else:
-        title = "Rose - Missing DLL"
+        title = "Kaleido - Missing DLL"
         header = "Missing File: cslol-dll.dll"
         body = (
-            "Rose cannot start without this file.\n\n"
+            "Kaleido cannot start without this file.\n\n"
             "STEPS TO FIX:\n"
             "1. Download 'cslol-dll.dll' from the internet.\n"
             "2. Click the [ Open Folder ] button below.\n"
             "3. Drag and drop the file into the opened folder.\n"
-            "4. Restart Rose.\n\n"
+            "4. Restart Kaleido.\n\n"
             "WARNING: Do NOT ask for and do NOT share this file on our Discord.\n"
             "This file is NOT available in there due DMCA (license) restrictions!\n"
             "Instead, you will be banned permanently."
@@ -136,14 +136,14 @@ def _show_dll_dialog_legacy(tools_dir, reason="missing") -> bool:
 
         def on_discord():
             try:
-                webbrowser.open("https://discord.gg/roseskins")
+                webbrowser.open("https://discord.gg/bsb8yEAMpE")
             except Exception:
                 pass
 
         btn_open = ttk.Button(btn_frame, text="📂 Open Folder", command=on_open)
         btn_open.pack(side=tk.LEFT, padx=(0, 10), ipadx=5, ipady=2)
         
-        btn_close = ttk.Button(btn_frame, text="❌ Close Rose", command=on_close)
+        btn_close = ttk.Button(btn_frame, text="❌ Close Kaleido", command=on_close)
         btn_close.pack(side=tk.LEFT, padx=(0, 8), ipadx=5, ipady=2)
 
         btn_discord = ttk.Button(btn_frame, text="✉ Join Discord", command=on_discord)
@@ -161,13 +161,13 @@ def _show_dll_dialog_legacy(tools_dir, reason="missing") -> bool:
         
     except ImportError:
         import ctypes
-        msg = f"{header}\n\n{body}\n\nDiscord: https://discord.gg/roseskins\n\nClick OK to open the folder."
+        msg = f"{header}\n\n{body}\n\nDiscord: https://discord.gg/bsb8yEAMpE\n\nClick OK to open the folder."
         res = ctypes.windll.user32.MessageBoxW(0, msg, title, 0x40031) # MB_OKCANCEL | MB_ICONWARNING | MB_SETFOREGROUND
         if res == 6: # IDYES
             try: subprocess.run(["explorer", str(tools_dir)], check=False)
             except Exception: pass
         elif res == 7: # IDNO
-            try: webbrowser.open("https://discord.gg/roseskins")
+            try: webbrowser.open("https://discord.gg/bsb8yEAMpE")
             except Exception: pass
         return False
 
@@ -183,22 +183,22 @@ def _show_native_dll_dialog(tools_dir, reason="missing"):
     import webbrowser
 
     if reason == "invalid":
-        title = "Rose - Broken DLL"
-        status_title = "One Rose component needs replacing"
-        status_body = "The cslol-dll.dll in Rose's tools folder is outdated, incorrect, or damaged."
+        title = "Kaleido - Broken DLL"
+        status_title = "One Kaleido component needs replacing"
+        status_body = "The cslol-dll.dll in Kaleido's tools folder is outdated, incorrect, or damaged."
         steps = (
             "1. Download a new cslol-dll.dll from a trusted source.\n"
-            "2. Open Rose's tools folder.\n"
-            "3. Replace the old file, then restart Rose."
+            "2. Open Kaleido's tools folder.\n"
+            "3. Replace the old file, then restart Kaleido."
         )
     else:
-        title = "Rose - Missing DLL"
-        status_title = "One Rose component is missing"
-        status_body = "Rose needs cslol-dll.dll in its tools folder before it can start."
+        title = "Kaleido - Missing DLL"
+        status_title = "One Kaleido component is missing"
+        status_body = "Kaleido needs cslol-dll.dll in its tools folder before it can start."
         steps = (
             "1. Download cslol-dll.dll from a trusted source.\n"
-            "2. Open Rose's tools folder.\n"
-            "3. Place the file there, then restart Rose."
+            "2. Open Kaleido's tools folder.\n"
+            "3. Place the file there, then restart Kaleido."
         )
 
     class TaskDialogButton(ctypes.Structure):
@@ -241,13 +241,13 @@ def _show_native_dll_dialog(tools_dir, reason="missing"):
     button_close = 1002
     buttons = (TaskDialogButton * 2)(
         TaskDialogButton(button_open, "Open tools folder"),
-        TaskDialogButton(button_close, "Close Rose"),
+        TaskDialogButton(button_close, "Close Kaleido"),
     )
     content = (
         f"{status_body}\n\nHow to fix it:\n{steps}\n\n"
         '<a href="https://youtu.be/lqTgQEcwOQY">Watch the installation tutorial on YouTube</a>'
     )
-    footer = "Please do not request or share this file in Discord. Rose cannot distribute it because of licensing restrictions."
+    footer = "Please do not request or share this file in Discord. Kaleido cannot distribute it because of licensing restrictions."
     assets_dirs = []
     if hasattr(sys, "_MEIPASS"):
         assets_dirs.append(Path(sys._MEIPASS) / "assets")
@@ -386,29 +386,29 @@ def _show_dll_dialog(tools_dir, reason="missing") -> bool:
     import ctypes
     tools_dir.mkdir(parents=True, exist_ok=True)
     if reason == "invalid":
-        title = "Rose - Broken DLL"
-        status_title = "One Rose component needs replacing"
-        status_body = "The cslol-dll.dll in Rose's tools folder is outdated, incorrect, or damaged."
+        title = "Kaleido - Broken DLL"
+        status_title = "One Kaleido component needs replacing"
+        status_body = "The cslol-dll.dll in Kaleido's tools folder is outdated, incorrect, or damaged."
         steps = (
             "1. Download a new cslol-dll.dll from a trusted source.\n"
-            "2. Open Rose's tools folder.\n"
-            "3. Replace the old file, then restart Rose."
+            "2. Open Kaleido's tools folder.\n"
+            "3. Replace the old file, then restart Kaleido."
         )
     else:
-        title = "Rose - Missing DLL"
-        status_title = "One Rose component is missing"
-        status_body = "Rose needs cslol-dll.dll in its tools folder before it can start."
+        title = "Kaleido - Missing DLL"
+        status_title = "One Kaleido component is missing"
+        status_body = "Kaleido needs cslol-dll.dll in its tools folder before it can start."
         steps = (
             "1. Download cslol-dll.dll from a trusted source.\n"
-            "2. Open Rose's tools folder.\n"
-            "3. Place the file there, then restart Rose."
+            "2. Open Kaleido's tools folder.\n"
+            "3. Place the file there, then restart Kaleido."
         )
     message = (
         f"{status_title}\n\n{status_body}\n\nHow to fix it:\n{steps}\n\n"
         "Installation tutorial: https://youtu.be/lqTgQEcwOQY\n\n"
         "Please do not request or share this file in Discord.\n"
-        "Discord: https://discord.gg/roseskins\n\n"
-        "Press OK to open the tools folder, or Cancel to close Rose."
+        "Discord: https://discord.gg/bsb8yEAMpE\n\n"
+        "Press OK to open the tools folder, or Cancel to close Kaleido."
     )
     response = ctypes.windll.user32.MessageBoxW(
         0, message, title, 0x00000001 | 0x00000030 | 0x00040000
@@ -423,22 +423,22 @@ def _show_dll_dialog(tools_dir, reason="missing") -> bool:
     tools_dir.mkdir(parents=True, exist_ok=True)
 
     if reason == "invalid":
-        title = "Rose - Broken DLL"
-        status_title = "Rose found an invalid file"
+        title = "Kaleido - Broken DLL"
+        status_title = "Kaleido found an invalid file"
         status_body = "The installed cslol-dll.dll is outdated, incorrect, or damaged."
         steps = (
             "1. Download a new cslol-dll.dll from a trusted source.\n"
-            "2. Open Rose's tools folder below.\n"
-            "3. Replace the old file, then restart Rose."
+            "2. Open Kaleido's tools folder below.\n"
+            "3. Replace the old file, then restart Kaleido."
         )
     else:
-        title = "Rose - Missing DLL"
-        status_title = "Rose needs one file before it can start"
-        status_body = "cslol-dll.dll is missing from Rose's tools folder."
+        title = "Kaleido - Missing DLL"
+        status_title = "Kaleido needs one file before it can start"
+        status_body = "cslol-dll.dll is missing from Kaleido's tools folder."
         steps = (
             "1. Download cslol-dll.dll from a trusted source.\n"
-            "2. Open Rose's tools folder below.\n"
-            "3. Drop the file there, then restart Rose."
+            "2. Open Kaleido's tools folder below.\n"
+            "3. Drop the file there, then restart Kaleido."
         )
 
     try:
@@ -525,7 +525,7 @@ def _show_dll_dialog(tools_dir, reason="missing") -> bool:
                    font=("Segoe UI", 9, "bold"), anchor=tk.W).pack(fill=tk.X)
         make_label(
             notice,
-            text="Please do not request or share this file in Discord. Rose cannot distribute it because of licensing restrictions.",
+            text="Please do not request or share this file in Discord. Kaleido cannot distribute it because of licensing restrictions.",
             fg=muted,
             font=("Segoe UI", 9),
             anchor=tk.W,
@@ -548,7 +548,7 @@ def _show_dll_dialog(tools_dir, reason="missing") -> bool:
 
         def on_discord():
             try:
-                webbrowser.open("https://discord.gg/roseskins")
+                webbrowser.open("https://discord.gg/bsb8yEAMpE")
             except Exception:
                 pass
 
@@ -570,7 +570,7 @@ def _show_dll_dialog(tools_dir, reason="missing") -> bool:
             )
 
         make_button(buttons, "Open tools folder", on_open, accent).pack(side=tk.LEFT)
-        make_button(buttons, "Close Rose", on_close, card).pack(side=tk.LEFT, padx=(9, 0))
+        make_button(buttons, "Close Kaleido", on_close, card).pack(side=tk.LEFT, padx=(9, 0))
         make_button(buttons, "Join Discord", on_discord, bg).pack(side=tk.RIGHT)
 
         root.update_idletasks()
@@ -588,7 +588,7 @@ def _show_dll_dialog(tools_dir, reason="missing") -> bool:
         msg = (
             f"{status_title}\n\n{status_body}\n\n{steps}\n\n"
             "Important: Please do not request or share this file in Discord.\n\n"
-            "Discord: https://discord.gg/roseskins\n\n"
+            "Discord: https://discord.gg/bsb8yEAMpE\n\n"
             "Click OK to open the folder."
         )
         res = ctypes.windll.user32.MessageBoxW(
@@ -601,7 +601,7 @@ def _show_dll_dialog(tools_dir, reason="missing") -> bool:
                 pass
         elif res == 7:
             try:
-                webbrowser.open("https://discord.gg/roseskins")
+                webbrowser.open("https://discord.gg/bsb8yEAMpE")
             except Exception:
                 pass
         return False
@@ -756,7 +756,7 @@ def _update_registry_version() -> None:
         return
     try:
         import winreg
-        key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Rose"
+        key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Kaleido"
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE) as key:
             winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, APP_VERSION)
     except Exception:
@@ -908,16 +908,16 @@ if __name__ == "__main__":
             report_issue(
                 "FATAL_CRASH",
                 "error",
-                "Rose crashed unexpectedly.",
+                "Kaleido crashed unexpectedly.",
                 details={"type": type(e).__name__, "error": str(e)},
-                hint="Check %LOCALAPPDATA%\\Rose\\logs\\ for details.",
+                hint="Check %LOCALAPPDATA%\\Kaleido\\logs\\ for details.",
             )
         except Exception:
             pass
         
         error_msg = f"""
 ================================================================================
-FATAL ERROR - Rose Crashed
+FATAL ERROR - Kaleido Crashed
 ================================================================================
 Error: {e}
 Type: {type(e).__name__}
@@ -945,8 +945,8 @@ Log location: Check %LOCALAPPDATA%\\Rose\\logs\\
             try:
                 ctypes.windll.user32.MessageBoxW(
                     0,
-                    f"Rose crashed with an unhandled error:\n\n{str(e)}\n\nError type: {type(e).__name__}\n\nPlease check the log file in:\n%LOCALAPPDATA%\\Rose\\logs\\",
-                    "Rose - Fatal Error",
+                    f"Kaleido crashed with an unhandled error:\n\n{str(e)}\n\nError type: {type(e).__name__}\n\nPlease check the log file in:\n%LOCALAPPDATA%\\Kaleido\\logs\\",
+                    "Kaleido - Fatal Error",
                     0x50010  # MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST
                 )
             except Exception:

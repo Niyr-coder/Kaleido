@@ -1,6 +1,6 @@
 /**
  * @name ROSE-FormsWheel
- * @author Rose Team
+ * @author Krealos
  * @description Custom chroma wheel with asset-based buttons - Adapted from ROSE-ChromaWheel
  * @link https://github.com/Alban1911/Rose-FormsWheel
  */

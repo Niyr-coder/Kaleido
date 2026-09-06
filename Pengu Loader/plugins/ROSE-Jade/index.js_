@@ -165,7 +165,7 @@ const initializeObserver = async () => {
         {
             groupName: "Rose",
             titleKey: "el_Rose",
-            titleName: "Rose",
+            titleName: "Kaleido",
             capitalTitleKey: "el_Rose_capital",
             capitalTitleName: "Rose",
             element: [

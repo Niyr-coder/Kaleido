@@ -1,11 +1,11 @@
 ; Rose Installer Script for Inno Setup
 ; This creates a proper Windows installer that registers the app
 
-#define MyAppName "Rose"
+#define MyAppName "Kaleido"
 #define MyAppVersion "1.2.14"
 #define MyAppVersionInfo "1.2.14.0"
-#define MyAppPublisher "Rose Team"
-#define MyAppURL "https://github.com/Alban1911/Rose"
+#define MyAppPublisher "Krealos"
+#define MyAppURL "https://github.com/Niyr-coder/Kaleido"
 #define MyAppExeName "Rose.exe"
 #define MyAppDescription "Effortless skin changer for League of Legends"
 ; Must match config.SINGLE_INSTANCE_MUTEX_NAME (used by the app to enforce single-instance)
@@ -26,7 +26,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=installer
-OutputBaseFilename=Rose_Setup
+OutputBaseFilename=Kaleido_Setup
 SetupIconFile=assets\icon.ico
 Compression=lzma
 SolidCompression=yes

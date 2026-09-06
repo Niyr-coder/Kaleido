@@ -27,9 +27,10 @@ class InstallIdTests(unittest.TestCase):
 
 
 class AnalyticsClientTests(unittest.TestCase):
+    @patch("analytics.core.analytics_client.get_config_bool", return_value=True)
     @patch("analytics.core.analytics_client.get_install_id", return_value="00000000-0000-4000-8000-000000000000")
     @patch("analytics.core.analytics_client.requests.post")
-    def test_ping_contains_pseudonymous_install_data(self, post, get_install_id):
+    def test_ping_contains_pseudonymous_install_data(self, post, get_install_id, get_config_bool):
         response = Mock()
         response.status_code = 204
         post.return_value = response
@@ -49,6 +50,13 @@ class AnalyticsClientTests(unittest.TestCase):
             "event": "heartbeat",
         })
         self.assertNotIn("machine_id", payload)
+
+    @patch("analytics.core.analytics_client.get_config_bool", return_value=False)
+    @patch("analytics.core.analytics_client.requests.post")
+    def test_user_toggle_off_blocks_ping(self, post, get_config_bool):
+        client = AnalyticsClient(server_url="https://rosekeys.site/", timeout=2, enabled=True)
+        self.assertFalse(client.send_ping("1.2.10"))
+        post.assert_not_called()
 
     def test_presence_interval_is_15_minutes(self):
         self.assertEqual(ANALYTICS_PING_INTERVAL_S, 900)

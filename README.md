@@ -1,15 +1,27 @@
-# 🌹 Rose - Effortless Skin Changer for LoL
+# Kaleido by Krealos
+
+[![Repo](https://img.shields.io/badge/GitHub-Niyr--coder%2FKaleido-6D28D9)](https://github.com/Niyr-coder/Kaleido) [![Discord](https://img.shields.io/badge/Discord-Krealos-5865F2?logo=discord&logoColor=white)](https://discord.gg/bsb8yEAMpE)
 
 <div align="center">
-
-  <img src="./assets/icon.png" alt="Rose Icon" width="128" height="128">
-
-[![Installer](https://img.shields.io/badge/Installer-Windows-32A832)](https://github.com/Alban1911/Rose/releases/latest) [![Ko-Fi](https://img.shields.io/badge/KoFi-Donate-C03030?logo=ko-fi&logoColor=white)](https://ko-fi.com/roseapp) [![Discord](https://img.shields.io/discord/1490473857075642621?color=32A832&logo=discord&logoColor=white&label=Discord)](https://discord.com/invite/roseskins) [![License](https://img.shields.io/badge/License-MIT-C03030)](LICENSE) [![Downloads](https://img.shields.io/github/downloads/Alban1911/Rose/total?color=32A832&label=Downloads&cacheSeconds=86400)](https://github.com/Alban1911/Rose/releases/latest)
-
-
+  <img src="./assets/icon.png" alt="Kaleido Icon" width="128" height="128">
 </div>
 
+Kaleido es la edición Krealos de [Rose](https://github.com/Alban1911/Rose), un cambiador de skins
+de código abierto para League of Legends (licencia MIT, © Alban and Florent). Solo se cambió la marca visible:
+nombre, icono, textos de diálogos e instalador. La lógica interna es la de Rose y toda la documentación
+original sigue aplicando.
+
+## Novedades de Kaleido
+
+- **Panel de ajustes en español.** El panel dentro del cliente de LoL está traducido (selector Español / English arriba del panel; la elección se guarda en el propio cliente).
+- **Perfiles de skins.** Cada skin con la que juegas se guarda en el perfil activo (es lo que usa el modo histórico). Crea perfiles como `Ranked`, `ARAM` o `Tryhard` desde el panel, cámbialos con un clic y verás la lista de campeones y skins guardadas de cada uno. Los perfiles viven en `%LOCALAPPDATA%\Rose\profiles.json`; el cambio aplica a partir de la siguiente selección de campeón.
+- **Telemetría y actualizaciones desde el panel.** Dos casillas en "Privacidad y actualizaciones": enviar estadísticas anónimas (apagado por defecto) y buscar actualizaciones al iniciar (encendido por defecto). Se guardan en `config.ini` como `analytics_enabled` y `auto_update`.
+
+> El servidor de telemetría sigue siendo el de Rose (`ANALYTICS_SERVER_URL` en `config.py`) y el updater apunta a las releases de `Niyr-coder/Kaleido`. Cambia el primero cuando Krealos tenga su propio servidor.
+
 ---
+
+## Documentación original de Rose
 
 ## Overview
 

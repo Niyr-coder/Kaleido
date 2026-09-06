@@ -48,7 +48,7 @@ def _show_error(message: str) -> None:
         user32.MessageBoxW(
             None,
             message,
-            "Rose - Launcher",
+            "Kaleido - Launcher",
             MB_OK | MB_ICONERROR | MB_TOPMOST,
         )
         updater_log.error(f"Error dialog shown to user: {message}")
@@ -76,11 +76,11 @@ def _confirm_update(dialog: UpdateDialog, remote_version: str, local_version: st
     """Ask whether the user wants to download an available Rose update."""
     dialog.set_marquee(False)
     dialog.set_detail("Update available")
-    dialog.set_status(f"Rose {remote_version} is ready to install.")
+    dialog.set_status(f"Kaleido {remote_version} is ready to install.")
     dialog.pump_messages()
 
     message = (
-        f"A new version of Rose is available.\n\n"
+        f"A new version of Kaleido is available.\n\n"
         f"Current version: {local_version}\n"
         f"New version: {remote_version}\n\n"
         "Do you want to download and install it now?"
@@ -88,7 +88,7 @@ def _confirm_update(dialog: UpdateDialog, remote_version: str, local_version: st
     result = user32.MessageBoxW(
         dialog.hwnd or None,
         message,
-        "Rose update available",
+        "Kaleido update available",
         MB_YESNO | MB_ICONINFORMATION | MB_DEFBUTTON2 | MB_TOPMOST,
     )
     accepted = result == IDYES
@@ -100,7 +100,7 @@ def _confirm_update(dialog: UpdateDialog, remote_version: str, local_version: st
     )
 
     if accepted:
-        dialog.set_detail("Updating Rose...")
+        dialog.set_detail("Updating Kaleido...")
         dialog.set_status("Downloading update...")
     else:
         dialog.set_detail("Update skipped")
@@ -209,7 +209,7 @@ def run_launcher(dev_mode: bool = False, test_download_fail: bool = False) -> No
             except Exception as exc:  # noqa: BLE001
                 result["error"] = exc
                 log.error(f"Launcher error: {exc}", exc_info=True)
-                _show_error(f"Failed to prepare Rose:\n\n{exc}")
+                _show_error(f"Failed to prepare Kaleido:\n\n{exc}")
                 updater_log.exception("Launcher sequence crashed", exc_info=True)
             finally:
                 dialog.allow_close()

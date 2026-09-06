@@ -1,6 +1,6 @@
 /**
  * @name Rose-SkinMonitor
- * @author Rose Team
+ * @author Krealos
  * @description Skin monitor for Pengu Loader
  * @link https://github.com/Alban1911/Rose-SkinMonitor
  */

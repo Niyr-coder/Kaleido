@@ -1,6 +1,6 @@
 /**
  * @name ROSE-HistoricMode
- * @author Rose Team
+ * @author Krealos
  * @description Historic mode for Pengu Loader
  * @link https://github.com/FlorentTariolle/Rose-HistoricMode
  */

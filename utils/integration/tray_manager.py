@@ -187,7 +187,7 @@ class TrayManager:
 
                 show_message_box_threaded(
                     f"Failed to open settings dialog:\n\n{e}",
-                    "Rose Settings",
+                    "Kaleido Settings",
                     0x10,  # MB_ICONERROR
                 )
             except Exception:
@@ -204,7 +204,7 @@ class TrayManager:
     def _create_menu(self) -> pystray.Menu:
         """Create the context menu for the tray icon"""
         return pystray.Menu(
-            pystray.MenuItem(f"Rose v{APP_VERSION}", None, enabled=False),
+            pystray.MenuItem(f"Kaleido v{APP_VERSION}", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open Mods Folder", self._on_open_mods),
             pystray.Menu.SEPARATOR,
@@ -220,9 +220,9 @@ class TrayManager:
             menu = self._create_menu()
             
             self.icon = pystray.Icon(
-                "Rose",
+                "Kaleido",
                 icon_image,
-                "Rose",
+                "Kaleido by Krealos",
                 menu,
                 default_action=self._on_icon_click
             )

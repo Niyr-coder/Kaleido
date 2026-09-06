@@ -1,14 +1,182 @@
 /**
  * @name Rose-SettingsPanel
- * @author Rose Team
- * @description Settings panel for Rose
+ * @author Krealos
+ * @description Settings panel for Kaleido
  * @link https://github.com/FlorentTariolle/ROSE-SettingsPanel
  */
 (function initSettingsPanel() {
   const LOG_PREFIX = "[Rose-SettingsPanel]";
-  const DISCORD_INVITE_URL = "https://discord.com/invite/roseskins";
+
+  // ---------------------------------------------------------------------
+  // Kaleido i18n: UI strings are written in English in the code and looked
+  // up in KALEIDO_I18N. Unknown strings fall back to English.
+  // ---------------------------------------------------------------------
+  const LANG_STORAGE_KEY = "kaleido-lang";
+  const KALEIDO_I18N = {
+    es: {
+      "Settings": "Ajustes",
+      "Language": "Idioma",
+      "Injection Threshold (seconds):": "Umbral de inyección (segundos):",
+      "Injection threshold info": "Información del umbral de inyección",
+      "Injection threshold is the time window during which the app considers your last hovered skin as the one to inject.\n\nFor example, if your injection threshold is set to 1 second, whichever skin you were hovering 1 second before champ select ends will be the one injected.\n\nIf your PC or connection is on the slower side, you may need to fine-tune this value.":
+        "El umbral de inyección es la ventana de tiempo en la que la app toma la última skin sobre la que pasaste el cursor como la que va a inyectar.\n\nPor ejemplo, con un umbral de 1 segundo, se inyectará la skin que estuvieras mirando 1 segundo antes de que termine la selección de campeón.\n\nSi tu PC o tu conexión son lentos, quizá tengas que ajustar este valor.",
+      "Monitor Auto-Resume Timeout (seconds):": "Tiempo máximo de reanudación automática (segundos):",
+      "Auto-resume info": "Información de la reanudación automática",
+      "Auto-resume is a safety feature.\n\nIf the injection process takes longer than the value you set, the app will automatically cancel the injection and let the game start normally.\n\nThis prevents the injection from looping and blocking the game from launching.\n\nIf you use a lot of custom mods, you may need to adjust this value.":
+        "La reanudación automática es una medida de seguridad.\n\nSi la inyección tarda más que el valor que fijes, la app la cancela sola y deja que el juego arranque con normalidad.\n\nAsí se evita que la inyección se quede en bucle y bloquee el inicio de la partida.\n\nSi usas muchos mods personalizados, quizá tengas que subir este valor.",
+      "Start automatically with Windows:": "Iniciar automáticamente con Windows:",
+      "Enable auto-start": "Activar inicio automático",
+      "Privacy and updates:": "Privacidad y actualizaciones:",
+      "Send anonymous usage statistics": "Enviar estadísticas de uso anónimas",
+      "Telemetry info": "Información de telemetría",
+      "Only a random installation ID, the app version and start/heartbeat/close events are sent. Nothing about your account or your games. Off by default.":
+        "Solo se envía un ID de instalación aleatorio, la versión de la app y eventos de inicio, presencia y cierre. Nada sobre tu cuenta ni tus partidas. Desactivado por defecto.",
+      "Check for updates on startup": "Buscar actualizaciones al iniciar",
+      "League of Legends Game Path:": "Ruta del juego League of Legends:",
+      "Add custom mods": "Añadir mods personalizados",
+      "Add Custom Mods": "Añadir mods personalizados",
+      "Skins": "Skins",
+      "Maps": "Mapas",
+      "Fonts": "Fuentes",
+      "Announcers": "Locutores",
+      "UI": "Interfaz",
+      "Voiceover": "Voces",
+      "Loading Screen": "Pantalla de carga",
+      "VFX": "Efectos visuales",
+      "SFX": "Efectos de sonido",
+      "Others": "Otros",
+      "Open Logs Folder": "Abrir carpeta de registros",
+      "Troubleshooting": "Solución de problemas",
+      "Open Pengu Loader UI": "Abrir interfaz de Pengu Loader",
+      "Save": "Guardar",
+      "Saved!": "¡Guardado!",
+      "Error saving settings": "Error al guardar los ajustes",
+      "Go back": "Volver",
+      "Select Champion": "Elegir campeón",
+      "Search champions...": "Buscar campeones...",
+      "Loading champions...": "Cargando campeones...",
+      "No champions found matching your search.": "No hay campeones que coincidan con tu búsqueda.",
+      "No champions found. Please ensure League of Legends client is running.": "No se encontraron campeones. Asegúrate de que el cliente de League of Legends esté abierto.",
+      "Select Skins & Chromas": "Elegir skins y chromas",
+      "Loading skins...": "Cargando skins...",
+      "No skins found for this champion.": "No se encontraron skins para este campeón.",
+      "Confirm & Select Mod": "Confirmar y elegir mod",
+      "Base skin": "Skin base",
+      "Back to skin": "Volver a la skin",
+      "{count} target selected": "{count} objetivo seleccionado",
+      "{count} targets selected": "{count} objetivos seleccionados",
+      "Chromas {n}": "Chromas {n}",
+      "Show {n} chromas": "Mostrar {n} chromas",
+      "Close": "Cerrar",
+      "Loading…": "Cargando…",
+      "No recent errors.": "No hay errores recientes.",
+      "If something feels off, open the logs folder and share the latest log in a discord ticket.": "Si algo no va bien, abre la carpeta de registros y comparte el último registro en un ticket de Discord.",
+      "Errors (most recent first)": "Errores (el más reciente primero)",
+      "Tip: after changing a setting, click": "Consejo: después de cambiar un ajuste, pulsa",
+      "then retry.": "y vuelve a intentarlo.",
+      "No additional details.": "Sin más detalles.",
+      "(unknown error)": "(error desconocido)",
+      "Base skin verification failed (selected skin may not apply)": "Falló la verificación de la skin base (puede que la skin elegida no se aplique)",
+      "Base skin forcing took too long (skin may not appear)": "Forzar la skin base tardó demasiado (puede que la skin no aparezca)",
+      "What it means: the client didn't confirm the base skin change in time.": "Qué significa: el cliente no confirmó a tiempo el cambio a la skin base.",
+      "What it means: forcing the base skin took too long, so the selected skin may not show.": "Qué significa: forzar la skin base tardó demasiado, así que la skin elegida puede no verse.",
+      "Fix: you're already at the maximum Injection Threshold. This usually means the injection is extremely slow. Try lighter mods, close heavy apps, move League/mods to an SSD, and consider adding antivirus exclusions for the League and Kaleido folders. Then retry.":
+        "Solución: ya estás en el umbral de inyección máximo. Suele significar que la inyección es extremadamente lenta. Prueba mods más ligeros, cierra apps pesadas, mueve League y los mods a un SSD y añade exclusiones del antivirus para las carpetas de League y Kaleido. Luego vuelve a intentarlo.",
+      "Fix: based on {games} game(s), base skin confirmation takes up to {p90}ms (p90). Recommended threshold: {rec}s. Use the \"Apply recommended\" button below, or increase \"Injection Threshold\" manually.":
+        "Solución: según {games} partida(s), confirmar la skin base tarda hasta {p90} ms (p90). Umbral recomendado: {rec} s. Usa el botón \"Aplicar\" de abajo o sube el umbral de inyección a mano.",
+      "Fix: increase \"Injection Threshold (seconds)\" and click Save. If the warning is still there, increase it again and Save again. Once the warning is gone, retry your skin selection.":
+        "Solución: sube el umbral de inyección y pulsa Guardar. Si el aviso sigue, súbelo otra vez y guarda de nuevo. Cuando desaparezca, vuelve a elegir tu skin.",
+      "Injection exceeded the timeout (process was stopped)": "La inyección superó el tiempo máximo (se detuvo el proceso)",
+      "What it means: injection took longer than the allowed time, so ROSE stopped the process.": "Qué significa: la inyección tardó más de lo permitido, así que Kaleido detuvo el proceso.",
+      "Fix: you're already at the maximum Monitor Auto-Resume Timeout. This usually means the injection is extremely slow. Try lighter mods, close heavy apps, move League/mods to an SSD, and consider adding antivirus exclusions for the League and Kaleido folders. Then retry.":
+        "Solución: ya estás en el tiempo máximo de reanudación automática. Suele significar que la inyección es extremadamente lenta. Prueba mods más ligeros, cierra apps pesadas, mueve League y los mods a un SSD y añade exclusiones del antivirus para las carpetas de League y Kaleido. Luego vuelve a intentarlo.",
+      "Fix: increase \"Monitor Auto-Resume Timeout (seconds)\" and click Save. If the warning is still there, increase it again and Save again. Once the warning is gone, try again.":
+        "Solución: sube el tiempo máximo de reanudación automática y pulsa Guardar. Si el aviso sigue, súbelo otra vez y guarda de nuevo. Cuando desaparezca, vuelve a intentarlo.",
+      "Not enough disk space for injection": "No hay espacio en disco suficiente para la inyección",
+      "What it means: Kaleido could not create the overlay for the selected skin.": "Qué significa: Kaleido no pudo crear el overlay de la skin elegida.",
+      "Fix: free up space on the drive containing Kaleido injection files, then retry. Map mods can require several GB.": "Solución: libera espacio en la unidad donde están los archivos de inyección de Kaleido y vuelve a intentarlo. Los mods de mapa pueden ocupar varios GB.",
+      "Based on {label}, we recommend": "Según {label}, recomendamos",
+      "Your threshold looks good (based on {label})": "Tu umbral va bien (según {label})",
+      "{n} game": "{n} partida",
+      "{n} games": "{n} partidas",
+      "Apply": "Aplicar",
+      "Applied!": "¡Aplicado!",
+      // Profiles
+      "Skin profiles:": "Perfiles de skins:",
+      "Profiles info": "Información de perfiles",
+      "Every skin you play with is saved into the active profile (that is what Historic Mode uses to bring it back). Create several profiles, for example Ranked, ARAM or Tryhard, and switch between them to keep different skin combos per champion. Changing profiles applies from the next champion select.":
+        "Cada skin con la que juegas se guarda en el perfil activo (es lo que usa el modo histórico para volver a ponértela). Crea varios perfiles, por ejemplo Ranked, ARAM o Tryhard, y cambia entre ellos para tener combos de skins distintos por campeón. El cambio se aplica a partir de la siguiente selección de campeón.",
+      "Active profile": "Perfil activo",
+      "New": "Nuevo",
+      "Rename": "Renombrar",
+      "Delete": "Eliminar",
+      "Confirm delete?": "¿Confirmar borrado?",
+      "Create": "Crear",
+      "Cancel": "Cancelar",
+      "Profile name": "Nombre del perfil",
+      "Copy current skins into the new profile": "Copiar las skins actuales al perfil nuevo",
+      "This profile has no saved skins yet. Play a game with a skin and it will appear here.": "Este perfil aún no tiene skins guardadas. Juega una partida con una skin y aparecerá aquí.",
+      "{n} champion": "{n} campeón",
+      "{n} champions": "{n} campeones",
+      "Remove from profile": "Quitar del perfil",
+      "Custom mod": "Mod personalizado",
+      "Champion {id}": "Campeón {id}",
+      "Skin {id}": "Skin {id}",
+      "Chroma {id}": "Chroma {id}",
+      "Profile not found": "Perfil no encontrado",
+      "Invalid profile name": "Nombre de perfil no válido",
+      "A profile with that name already exists": "Ya existe un perfil con ese nombre",
+      "Cannot delete the last profile": "No se puede eliminar el último perfil",
+      "Could not write historic files": "No se pudieron escribir los archivos del historial",
+      "Could not save profiles file": "No se pudo guardar el archivo de perfiles",
+      "Profiles are not available (backend too old).": "Los perfiles no están disponibles (backend antiguo).",
+    },
+  };
+  let currentLang = "es";
+  try {
+    const stored = localStorage.getItem(LANG_STORAGE_KEY);
+    if (stored === "en" || stored === "es") currentLang = stored;
+  } catch (e) {}
+  function t(text, vars) {
+    const dict = KALEIDO_I18N[currentLang];
+    let out = (dict && Object.prototype.hasOwnProperty.call(dict, text)) ? dict[text] : text;
+    if (vars) {
+      Object.keys(vars).forEach((k) => {
+        out = out.split(`{${k}}`).join(String(vars[k]));
+      });
+    }
+    return out;
+  }
+  function setLanguage(lang) {
+    currentLang = lang === "en" ? "en" : "es";
+    try { localStorage.setItem(LANG_STORAGE_KEY, currentLang); } catch (e) {}
+  }
+  let _lastNavItem = null;
+  let profilesState = { active: "", profiles: [], entries: [], error: null, available: true };
+  let _championNames = null;
+  let _championNamesPromise = null;
+  function loadChampionNames() {
+    if (_championNames) return Promise.resolve(_championNames);
+    if (_championNamesPromise) return _championNamesPromise;
+    _championNamesPromise = fetch("/lol-game-data/assets/v1/champion-summary.json")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => {
+        const map = {};
+        (Array.isArray(list) ? list : []).forEach((c) => {
+          if (c && typeof c.id === "number" && c.id > 0) map[c.id] = c.name;
+        });
+        _championNames = map;
+        return map;
+      })
+      .catch(() => {
+        _championNamesPromise = null;
+        return {};
+      });
+    return _championNamesPromise;
+  }
+  const DISCORD_INVITE_URL = "https://discord.gg/bsb8yEAMpE";
   const KOFI_URL = "https://ko-fi.com/roseapp";
-  const GITHUB_URL = "https://github.com/Alban1911/Rose";
+  const GITHUB_URL = "https://github.com/Niyr-coder/Kaleido";
 
   const PANEL_ID = "rose-settings-panel";
   const FLYOUT_ID = "rose-settings-flyout";
@@ -56,8 +224,41 @@
   };
   let pathValidationTimeout = null;
 
-  function getCSSRules() {
+  function getKaleidoCSS() {
     return `
+      .kaleido-lang-row { display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:10px; font-family:'Beaufort for LOL', serif; }
+      .kaleido-lang-label { font-size:11px; color:#a09b8c; letter-spacing:0.06em; text-transform:uppercase; margin-right:4px; }
+      .kaleido-lang-btn { background:transparent; border:1px solid #463714; color:#a09b8c; font-family:'Beaufort for LOL', serif; font-size:11px; padding:2px 8px; cursor:pointer; letter-spacing:0.04em; }
+      .kaleido-lang-btn:hover { color:#f0e6d2; border-color:#c89b3c; }
+      .kaleido-lang-btn.active { color:#f0e6d2; border-color:#c89b3c; background:rgba(200,155,60,0.12); cursor:default; }
+      .kaleido-profiles-row { display:flex; align-items:center; gap:6px; margin-top:8px; width:100%; }
+      .kaleido-select { flex:1 1 auto; min-width:0; background:#1e2328; color:#cdbe91; border:1px solid #463714; font-family:'Beaufort for LOL', serif; font-size:12px; padding:4px 6px; height:28px; }
+      .kaleido-select:focus { outline:none; border-color:#c89b3c; }
+      .kaleido-select option { background:#1e2328; color:#cdbe91; }
+      .kaleido-btn { background:#1e2328; border:1px solid #463714; color:#cdbe91; font-family:'Beaufort for LOL', serif; font-size:11px; padding:0 10px; height:28px; cursor:pointer; white-space:nowrap; letter-spacing:0.03em; }
+      .kaleido-btn:hover { border-color:#c89b3c; color:#f0e6d2; }
+      .kaleido-btn.primary { border-color:#c89b3c; color:#f0e6d2; }
+      .kaleido-btn.danger { border-color:#c0392b; color:#ff8a80; }
+      .kaleido-btn.disabled { opacity:0.4; cursor:default; }
+      .kaleido-profiles-editor { display:flex; flex-direction:column; gap:6px; margin-top:8px; padding:8px; border:1px solid rgba(70,55,20,0.6); background:rgba(1,10,19,0.35); width:100%; box-sizing:border-box; }
+      .kaleido-profile-input { width:100%; box-sizing:border-box; }
+      .kaleido-copy-wrap { font-size:11px; }
+      .kaleido-profiles-error { margin-top:6px; color:#ff8a80; font-family:'Beaufort for LOL', serif; font-size:11px; }
+      .kaleido-profiles-list { margin-top:8px; max-height:150px; overflow-y:auto; width:100%; border:1px solid rgba(70,55,20,0.5); background:rgba(1,10,19,0.3); box-sizing:border-box; }
+      .kaleido-profiles-empty { padding:10px; color:#a09b8c; font-family:'Beaufort for LOL', serif; font-size:11px; text-align:center; }
+      .kaleido-profile-entry { display:flex; align-items:center; gap:8px; padding:4px 8px; border-bottom:1px solid rgba(70,55,20,0.35); }
+      .kaleido-profile-entry:last-child { border-bottom:none; }
+      .kaleido-profile-icon { width:26px; height:26px; border-radius:50%; border:1px solid #463714; flex:0 0 auto; }
+      .kaleido-profile-text { flex:1 1 auto; min-width:0; font-family:'Beaufort for LOL', serif; }
+      .kaleido-profile-champ { font-size:12px; color:#f0e6d2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .kaleido-profile-skin { font-size:11px; color:#a09b8c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .kaleido-entry-remove { flex:0 0 auto; background:transparent; border:1px solid transparent; color:#a09b8c; font-size:16px; line-height:1; width:22px; height:22px; cursor:pointer; }
+      .kaleido-entry-remove:hover { color:#ff8a80; border-color:#c0392b; }
+    `;
+  }
+
+  function getCSSRules() {
+    return getKaleidoCSS() + `
     @keyframes roseWarningPulse {
       0%   { filter: drop-shadow(0 0 0 rgba(255, 70, 70, 0.00)) drop-shadow(0 0 0 rgba(255, 70, 70, 0.00)); opacity: 0.95; }
       50%  { filter: drop-shadow(0 0 6px rgba(255, 70, 70, 0.90)) drop-shadow(0 0 12px rgba(255, 70, 70, 0.45)); opacity: 1.00; }
@@ -1137,6 +1338,8 @@
       gamePath: payload.gamePath || "",
       gamePathValid: payload.gamePathValid || false,
       version: payload.version || "",
+      analyticsEnabled: !!payload.analyticsEnabled,
+      autoUpdate: payload.autoUpdate === undefined ? true : !!payload.autoUpdate,
     };
     // Update version badge if the panel is already open
     const badge = document.getElementById("rose-version-badge");
@@ -1462,7 +1665,7 @@
       const saveButton = document.getElementById("save-button");
       if (saveButton) {
         const originalText = saveButton.textContent;
-        saveButton.textContent = "Saved!";
+        saveButton.textContent = t("Saved!");
         setTimeout(() => {
           saveButton.textContent = originalText;
         }, 2000);
@@ -1489,7 +1692,7 @@
       const saveButton = document.getElementById("save-button");
       if (saveButton) {
         const originalText = saveButton.textContent;
-        saveButton.textContent = payload.error || "Error saving settings";
+        saveButton.textContent = payload.error || t("Error saving settings");
         saveButton.style.background = "#8b0000";
         setTimeout(() => {
           saveButton.textContent = originalText;
@@ -1509,6 +1712,7 @@
   }
 
   function createSettingsFlyout(navItem) {
+    _lastNavItem = navItem;
     // Remove existing panel if any
     const existingPanel = document.getElementById(PANEL_ID);
     if (existingPanel) {
@@ -1712,7 +1916,7 @@
 
     const title = document.createElement("div");
     title.className = "settings-title";
-    title.textContent = "Settings";
+    title.textContent = t("Settings");
     title.style.marginBottom = "0";
     titleRow.appendChild(title);
 
@@ -1729,6 +1933,33 @@
 
     form.appendChild(titleRow);
 
+    // Language selector (Kaleido)
+    const langRow = document.createElement("div");
+    langRow.className = "kaleido-lang-row";
+    const langLabel = document.createElement("span");
+    langLabel.className = "kaleido-lang-label";
+    langLabel.textContent = t("Language");
+    langRow.appendChild(langLabel);
+    [["es", "Español"], ["en", "English"]].forEach(([code, label]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "kaleido-lang-btn" + (currentLang === code ? " active" : "");
+      btn.textContent = label;
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentLang === code) return;
+        setLanguage(code);
+        const nav = _lastNavItem;
+        // Re-create the panel in place. closeSettingsPanel() removes `settingsPanel`
+        // after a 220ms fade, which would delete the freshly created panel.
+        settingsPanel = null;
+        if (nav) createSettingsFlyout(nav);
+      });
+      langRow.appendChild(btn);
+    });
+    form.appendChild(langRow);
+
     // Injection threshold section
     const thresholdSection = document.createElement("div");
     thresholdSection.className = "settings-section";
@@ -1736,11 +1967,11 @@
     const thresholdLabel = document.createElement("label");
     thresholdLabel.className = "settings-label";
     const thresholdLabelText = document.createElement("span");
-    thresholdLabelText.textContent = "Injection Threshold (seconds):";
+    thresholdLabelText.textContent = t("Injection Threshold (seconds):");
     thresholdLabel.appendChild(
       createTooltipButton(
-        "Injection threshold is the time window during which the app considers your last hovered skin as the one to inject.\n\nFor example, if your injection threshold is set to 1 second, whichever skin you were hovering 1 second before champ select ends will be the one injected.\n\nIf your PC or connection is on the slower side, you may need to fine-tune this value.",
-        "Injection threshold info"
+        t("Injection threshold is the time window during which the app considers your last hovered skin as the one to inject.\n\nFor example, if your injection threshold is set to 1 second, whichever skin you were hovering 1 second before champ select ends will be the one injected.\n\nIf your PC or connection is on the slower side, you may need to fine-tune this value."),
+        t("Injection threshold info")
       )
     );
     thresholdLabel.appendChild(thresholdLabelText);
@@ -1860,11 +2091,11 @@
     const timeoutLabel = document.createElement("label");
     timeoutLabel.className = "settings-label";
     const timeoutLabelText = document.createElement("span");
-    timeoutLabelText.textContent = "Monitor Auto-Resume Timeout (seconds):";
+    timeoutLabelText.textContent = t("Monitor Auto-Resume Timeout (seconds):");
     timeoutLabel.appendChild(
       createTooltipButton(
-        "Auto-resume is a safety feature.\n\nIf the injection process takes longer than the value you set, the app will automatically cancel the injection and let the game start normally.\n\nThis prevents the injection from looping and blocking the game from launching.\n\nIf you use a lot of custom mods, you may need to adjust this value.",
-        "Auto-resume info"
+        t("Auto-resume is a safety feature.\n\nIf the injection process takes longer than the value you set, the app will automatically cancel the injection and let the game start normally.\n\nThis prevents the injection from looping and blocking the game from launching.\n\nIf you use a lot of custom mods, you may need to adjust this value."),
+        t("Auto-resume info")
       )
     );
     timeoutLabel.appendChild(timeoutLabelText);
@@ -1963,7 +2194,7 @@
 
     const autostartLabel = document.createElement("label");
     autostartLabel.className = "settings-label";
-    autostartLabel.textContent = "Start automatically with Windows:";
+    autostartLabel.textContent = t("Start automatically with Windows:");
     autostartSection.appendChild(autostartLabel);
 
     const autostartWrapper = document.createElement("div");
@@ -1976,10 +2207,58 @@
     autostartWrapper.appendChild(autostartCheckbox);
 
     const autostartText = document.createElement("span");
-    autostartText.textContent = "Enable auto-start";
+    autostartText.textContent = t("Enable auto-start");
     autostartWrapper.appendChild(autostartText);
     autostartSection.appendChild(autostartWrapper);
     form.appendChild(autostartSection);
+
+    // Privacy & updates section (Kaleido)
+    const privacySection = document.createElement("div");
+    privacySection.className = "settings-section";
+
+    const privacyLabel = document.createElement("label");
+    privacyLabel.className = "settings-label";
+    const privacyLabelText = document.createElement("span");
+    privacyLabelText.textContent = t("Privacy and updates:");
+    privacyLabel.appendChild(
+      createTooltipButton(
+        t("Only a random installation ID, the app version and start/heartbeat/close events are sent. Nothing about your account or your games. Off by default."),
+        t("Telemetry info")
+      )
+    );
+    privacyLabel.appendChild(privacyLabelText);
+    privacySection.appendChild(privacyLabel);
+
+    const analyticsWrapper = document.createElement("div");
+    analyticsWrapper.className = "settings-checkbox-wrapper";
+    const analyticsCheckbox = document.createElement("input");
+    analyticsCheckbox.type = "checkbox";
+    analyticsCheckbox.className = "settings-checkbox";
+    analyticsCheckbox.id = "analytics-checkbox";
+    analyticsWrapper.appendChild(analyticsCheckbox);
+    const analyticsText = document.createElement("span");
+    analyticsText.textContent = t("Send anonymous usage statistics");
+    analyticsWrapper.appendChild(analyticsText);
+    privacySection.appendChild(analyticsWrapper);
+
+    const autoUpdateWrapper = document.createElement("div");
+    autoUpdateWrapper.className = "settings-checkbox-wrapper";
+    autoUpdateWrapper.style.marginTop = "6px";
+    const autoUpdateCheckbox = document.createElement("input");
+    autoUpdateCheckbox.type = "checkbox";
+    autoUpdateCheckbox.className = "settings-checkbox";
+    autoUpdateCheckbox.id = "autoupdate-checkbox";
+    autoUpdateCheckbox.checked = true;
+    autoUpdateWrapper.appendChild(autoUpdateCheckbox);
+    const autoUpdateText = document.createElement("span");
+    autoUpdateText.textContent = t("Check for updates on startup");
+    autoUpdateWrapper.appendChild(autoUpdateText);
+    privacySection.appendChild(autoUpdateWrapper);
+
+    form.appendChild(privacySection);
+
+    // Skin profiles section (Kaleido)
+    form.appendChild(createProfilesSection());
 
     // Game path section
     const pathSection = document.createElement("div");
@@ -1987,7 +2266,7 @@
 
     const pathLabel = document.createElement("label");
     pathLabel.className = "settings-label";
-    pathLabel.textContent = "League of Legends Game Path:";
+    pathLabel.textContent = t("League of Legends Game Path:");
     pathSection.appendChild(pathLabel);
 
     const pathInputWrapper = document.createElement("div");
@@ -2028,7 +2307,7 @@
     placeholderOption.setAttribute("slot", "lol-uikit-dropdown-option");
     placeholderOption.setAttribute("value", "");
     placeholderOption.className = "framed-dropdown-type placeholder-option";
-    placeholderOption.textContent = "Add custom mods";
+    placeholderOption.textContent = t("Add custom mods");
     placeholderOption.style.color = "#7d7d7d";
     placeholderOption.style.opacity = "0.7";
     placeholderOption.style.pointerEvents = "none";
@@ -2061,7 +2340,7 @@
       option.setAttribute("slot", "lol-uikit-dropdown-option");
       option.setAttribute("value", category.id);
       option.className = "framed-dropdown-type";
-      option.textContent = category.name;
+      option.textContent = t(category.name);
       modsDropdown.appendChild(option);
     });
 
@@ -2284,7 +2563,7 @@
     // Open logs folder button
     const logsButton = document.createElement("lol-uikit-flat-button-secondary");
     logsButton.id = "logs-folder-button";
-    logsButton.textContent = "Open Logs Folder";
+    logsButton.textContent = t("Open Logs Folder");
     logsButton.style.marginTop = "8px";
     logsButton.style.width = "100%";
     logsButton.addEventListener("click", () => {
@@ -2295,7 +2574,7 @@
     // Troubleshooting button (opens a small dialog with compact errors)
     const troubleshootButton = document.createElement("lol-uikit-flat-button-secondary");
     troubleshootButton.id = "troubleshoot-button";
-    troubleshootButton.textContent = "Troubleshooting";
+    troubleshootButton.textContent = t("Troubleshooting");
     troubleshootButton.style.marginTop = "8px";
     troubleshootButton.style.width = "100%";
     troubleshootButton.addEventListener("click", () => {
@@ -2307,7 +2586,7 @@
     // Open Pengu Loader UI button
     const penguUIButton = document.createElement("lol-uikit-flat-button-secondary");
     penguUIButton.id = "pengu-ui-button";
-    penguUIButton.textContent = "Open Pengu Loader UI";
+    penguUIButton.textContent = t("Open Pengu Loader UI");
     penguUIButton.style.marginTop = "8px";
     penguUIButton.style.width = "100%";
     penguUIButton.addEventListener("click", () => {
@@ -2318,7 +2597,7 @@
     // Save button (moved to last position)
     const saveButton = document.createElement("lol-uikit-flat-button-secondary");
     saveButton.id = "save-button";
-    saveButton.textContent = "Save";
+    saveButton.textContent = t("Save");
     saveButton.style.marginTop = "8px";
     saveButton.style.width = "21%";
     saveButton.addEventListener("click", () => {
@@ -2403,6 +2682,309 @@
     // Request current settings and benchmark data
     requestSettings();
     requestDiagnostics();
+    requestProfiles();
+  }
+
+  // ---------------------------------------------------------------------
+  // Skin profiles (Kaleido)
+  // ---------------------------------------------------------------------
+  function requestProfiles() {
+    if (bridge) bridge.send({ type: "profiles-request" });
+  }
+
+  function handleProfilesData(payload) {
+    profilesState = {
+      active: payload.active || "",
+      profiles: Array.isArray(payload.profiles) ? payload.profiles : [],
+      entries: Array.isArray(payload.entries) ? payload.entries : [],
+      error: payload.error || null,
+      available: true,
+    };
+    loadChampionNames().then(() => renderProfilesSection());
+    renderProfilesSection();
+  }
+
+  function sendProfileAction(type, extra) {
+    if (!bridge) return;
+    bridge.send(Object.assign({ type: type }, extra || {}));
+  }
+
+  function createProfilesSection() {
+    const section = document.createElement("div");
+    section.className = "settings-section";
+    section.id = "kaleido-profiles-section";
+
+    const label = document.createElement("label");
+    label.className = "settings-label";
+    const labelText = document.createElement("span");
+    labelText.textContent = t("Skin profiles:");
+    label.appendChild(
+      createTooltipButtonGlobal(
+        t("Every skin you play with is saved into the active profile (that is what Historic Mode uses to bring it back). Create several profiles, for example Ranked, ARAM or Tryhard, and switch between them to keep different skin combos per champion. Changing profiles applies from the next champion select."),
+        t("Profiles info")
+      )
+    );
+    label.appendChild(labelText);
+    section.appendChild(label);
+
+    const body = document.createElement("div");
+    body.id = "kaleido-profiles-body";
+    section.appendChild(body);
+    renderProfilesSection();
+    return section;
+  }
+
+  // Tooltip helper usable outside createSettingsFlyout (same look as the inline one)
+  function createTooltipButtonGlobal(tooltipText, ariaLabel) {
+    const wrapper = document.createElement("span");
+    wrapper.className = "rose-tooltip-wrapper";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rose-tooltip-icon";
+    btn.setAttribute("aria-label", ariaLabel || "Info");
+    btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+    const tooltipEl = () => {
+      let el = document.getElementById("rose-global-tooltip");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "rose-global-tooltip";
+        el.setAttribute("role", "tooltip");
+        el.setAttribute("data-show", "false");
+        document.body.appendChild(el);
+      }
+      return el;
+    };
+    const show = () => {
+      const tooltip = tooltipEl();
+      tooltip.textContent = tooltipText;
+      tooltip.setAttribute("data-show", "true");
+      const rect = btn.getBoundingClientRect();
+      const tRect = tooltip.getBoundingClientRect();
+      const preferredTop = rect.top - tRect.height - 10;
+      const useTop = preferredTop >= 8;
+      tooltip.setAttribute("data-placement", useTop ? "top" : "bottom");
+      let left = rect.left + rect.width / 2 - tRect.width / 2;
+      left = Math.max(8, Math.min(window.innerWidth - tRect.width - 8, left));
+      tooltip.style.left = `${Math.round(left)}px`;
+      tooltip.style.top = `${Math.round(useTop ? preferredTop : rect.bottom + 10)}px`;
+      const arrowX = Math.max(12, Math.min(tRect.width - 12, rect.left + rect.width / 2 - left));
+      tooltip.style.setProperty("--rose-tooltip-arrow-x", `${Math.round(arrowX)}px`);
+    };
+    const hide = () => {
+      const el = document.getElementById("rose-global-tooltip");
+      if (el) el.setAttribute("data-show", "false");
+    };
+    btn.addEventListener("mouseenter", show);
+    btn.addEventListener("mouseleave", hide);
+    btn.addEventListener("focus", show);
+    btn.addEventListener("blur", hide);
+    wrapper.appendChild(btn);
+    return wrapper;
+  }
+
+  let _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 };
+
+  function renderProfilesSection() {
+    const body = document.getElementById("kaleido-profiles-body");
+    if (!body) return;
+    body.innerHTML = "";
+
+    const names = _championNames || {};
+    const st = profilesState;
+
+    if (!st.available) {
+      const warn = document.createElement("div");
+      warn.className = "kaleido-profiles-empty";
+      warn.textContent = t("Profiles are not available (backend too old).");
+      body.appendChild(warn);
+      return;
+    }
+
+    // Row: select + buttons
+    const row = document.createElement("div");
+    row.className = "kaleido-profiles-row";
+
+    const select = document.createElement("select");
+    select.className = "kaleido-select";
+    select.id = "kaleido-profile-select";
+    select.setAttribute("aria-label", t("Active profile"));
+    st.profiles.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.name;
+      const count = typeof p.count === "number" ? p.count : 0;
+      opt.textContent = `${p.name} (${t(count === 1 ? "{n} champion" : "{n} champions", { n: count })})`;
+      if (p.name === st.active) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener("change", () => {
+      const name = select.value;
+      if (name && name !== st.active) {
+        sendProfileAction("profile-switch", { name });
+      }
+    });
+    row.appendChild(select);
+
+    const mkBtn = (text, onClick, extraClass) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "kaleido-btn" + (extraClass ? " " + extraClass : "");
+      b.textContent = text;
+      b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onClick(b); });
+      return b;
+    };
+
+    row.appendChild(mkBtn(t("New"), () => {
+      _profilesUiMode = { mode: "create", target: null, deleteArmedAt: 0 };
+      renderProfilesSection();
+    }));
+    row.appendChild(mkBtn(t("Rename"), () => {
+      _profilesUiMode = { mode: "rename", target: st.active, deleteArmedAt: 0 };
+      renderProfilesSection();
+    }));
+    const deleteArmed = _profilesUiMode.mode === "delete" && Date.now() - _profilesUiMode.deleteArmedAt < 4000;
+    row.appendChild(mkBtn(deleteArmed ? t("Confirm delete?") : t("Delete"), () => {
+      if (st.profiles.length <= 1) return;
+      if (deleteArmed) {
+        _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 };
+        sendProfileAction("profile-delete", { name: st.active });
+      } else {
+        _profilesUiMode = { mode: "delete", target: st.active, deleteArmedAt: Date.now() };
+        renderProfilesSection();
+        setTimeout(() => {
+          if (_profilesUiMode.mode === "delete") {
+            _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 };
+            renderProfilesSection();
+          }
+        }, 4000);
+      }
+    }, deleteArmed ? "danger" : (st.profiles.length <= 1 ? "disabled" : "")));
+    body.appendChild(row);
+
+    // Inline editor for create / rename
+    if (_profilesUiMode.mode === "create" || _profilesUiMode.mode === "rename") {
+      const isCreate = _profilesUiMode.mode === "create";
+      const editor = document.createElement("div");
+      editor.className = "kaleido-profiles-editor";
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "settings-input kaleido-profile-input";
+      input.maxLength = 32;
+      input.placeholder = t("Profile name");
+      input.value = isCreate ? "" : (_profilesUiMode.target || "");
+      editor.appendChild(input);
+
+      let copyCheckbox = null;
+      if (isCreate) {
+        const copyWrap = document.createElement("label");
+        copyWrap.className = "settings-checkbox-wrapper kaleido-copy-wrap";
+        copyCheckbox = document.createElement("input");
+        copyCheckbox.type = "checkbox";
+        copyCheckbox.className = "settings-checkbox";
+        copyWrap.appendChild(copyCheckbox);
+        const copyText = document.createElement("span");
+        copyText.textContent = t("Copy current skins into the new profile");
+        copyWrap.appendChild(copyText);
+        editor.appendChild(copyWrap);
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "kaleido-profiles-row";
+      const submit = () => {
+        const value = (input.value || "").trim();
+        if (!value) { input.focus(); return; }
+        if (isCreate) {
+          sendProfileAction("profile-create", { name: value, copyCurrent: !!(copyCheckbox && copyCheckbox.checked) });
+        } else {
+          sendProfileAction("profile-rename", { name: _profilesUiMode.target, newName: value });
+        }
+        _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 };
+      };
+      actions.appendChild(mkBtn(isCreate ? t("Create") : t("Rename"), submit, "primary"));
+      actions.appendChild(mkBtn(t("Cancel"), () => {
+        _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 };
+        renderProfilesSection();
+      }));
+      editor.appendChild(actions);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); submit(); }
+        if (e.key === "Escape") {
+          _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 };
+          renderProfilesSection();
+        }
+      });
+      body.appendChild(editor);
+      setTimeout(() => input.focus(), 0);
+    }
+
+    if (st.error) {
+      const err = document.createElement("div");
+      err.className = "kaleido-profiles-error";
+      err.textContent = t(st.error);
+      body.appendChild(err);
+    }
+
+    // Entries list
+    const list = document.createElement("div");
+    list.className = "kaleido-profiles-list";
+    if (st.entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "kaleido-profiles-empty";
+      empty.textContent = t("This profile has no saved skins yet. Play a game with a skin and it will appear here.");
+      list.appendChild(empty);
+    } else {
+      const sorted = st.entries.slice().sort((a, b) => {
+        const an = names[a.championId] || "";
+        const bn = names[b.championId] || "";
+        return an.localeCompare(bn) || a.championId - b.championId;
+      });
+      sorted.forEach((entry) => {
+        const item = document.createElement("div");
+        item.className = "kaleido-profile-entry";
+
+        const icon = document.createElement("img");
+        icon.className = "kaleido-profile-icon";
+        icon.src = `/lol-game-data/assets/v1/champion-icons/${entry.championId}.png`;
+        icon.alt = "";
+        icon.onerror = function () { this.style.visibility = "hidden"; };
+        item.appendChild(icon);
+
+        const text = document.createElement("div");
+        text.className = "kaleido-profile-text";
+        const champ = document.createElement("div");
+        champ.className = "kaleido-profile-champ";
+        champ.textContent = names[entry.championId] || t("Champion {id}", { id: entry.championId });
+        const skin = document.createElement("div");
+        skin.className = "kaleido-profile-skin";
+        if (entry.isCustom) {
+          skin.textContent = `${t("Custom mod")}: ${entry.skinName || ""}`;
+        } else if (entry.skinName) {
+          skin.textContent = entry.skinName;
+        } else if (typeof entry.skinId === "number") {
+          skin.textContent = t("Skin {id}", { id: entry.skinId });
+        } else {
+          skin.textContent = "";
+        }
+        text.appendChild(champ);
+        text.appendChild(skin);
+        item.appendChild(text);
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "kaleido-entry-remove";
+        remove.title = t("Remove from profile");
+        remove.setAttribute("aria-label", t("Remove from profile"));
+        remove.textContent = "×";
+        remove.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          sendProfileAction("profile-remove-entry", { championId: entry.championId });
+        });
+        item.appendChild(remove);
+        list.appendChild(item);
+      });
+    }
+    body.appendChild(list);
   }
 
   function setupSliderInteractions(sliderId, slider, button, fill, valueDisplay, min, max, valueConverter, displayFormatter) {
@@ -2596,6 +3178,15 @@
       autostartCheckbox.checked = currentSettings.autostart;
     }
 
+    const analyticsCheckbox = document.getElementById("analytics-checkbox");
+    if (analyticsCheckbox) {
+      analyticsCheckbox.checked = !!currentSettings.analyticsEnabled;
+    }
+    const autoUpdateCheckbox = document.getElementById("autoupdate-checkbox");
+    if (autoUpdateCheckbox) {
+      autoUpdateCheckbox.checked = currentSettings.autoUpdate !== false;
+    }
+
     if (pathInput) {
       pathInput.value = currentSettings.gamePath || "";
       // Update status based on validation result from settings data
@@ -2679,6 +3270,10 @@
       : 60;
     const autostart = autostartCheckbox ? autostartCheckbox.checked : false;
     const gamePath = pathInput ? pathInput.value.trim() : "";
+    const analyticsCheckbox = document.getElementById("analytics-checkbox");
+    const autoUpdateCheckbox = document.getElementById("autoupdate-checkbox");
+    const analyticsEnabled = analyticsCheckbox ? analyticsCheckbox.checked : false;
+    const autoUpdate = autoUpdateCheckbox ? autoUpdateCheckbox.checked : true;
 
     // Clamp threshold between 0.30 and 2.0
     const clampedThreshold = Math.max(0.3, Math.min(2.0, threshold));
@@ -2694,6 +3289,8 @@
       monitorAutoResumeTimeout: clampedTimeout,
       autostart: autostart,
       gamePath: gamePath,
+      analyticsEnabled: analyticsEnabled,
+      autoUpdate: autoUpdate,
     });
 
     log("info", "Settings save requested", {
@@ -2774,7 +3371,7 @@
     // Title
     const title = document.createElement("div");
     title.className = "settings-title";
-    title.textContent = "Add Custom Mods";
+    title.textContent = t("Add Custom Mods");
     flyoutContent.appendChild(title);
 
     // Category buttons container
@@ -2798,7 +3395,7 @@
 
     categories.forEach((category) => {
       const categoryButton = document.createElement("lol-uikit-flat-button-secondary");
-      categoryButton.textContent = category.name;
+      categoryButton.textContent = t(category.name);
       categoryButton.style.width = "100%";
       categoryButton.style.padding = "12px";
       categoryButton.addEventListener("click", () => {
@@ -2879,7 +3476,7 @@
     const backButton = document.createElement("button");
     backButton.className = "back-button";
     backButton.innerHTML = '<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>';
-    backButton.setAttribute("aria-label", "Go back");
+    backButton.setAttribute("aria-label", t("Go back"));
     backButton.addEventListener("click", () => {
       closeChampionSelection();
     });
@@ -2888,7 +3485,7 @@
     // Title text
     const titleWrapper = document.createElement("div");
     titleWrapper.className = "dialog-title-wrapper";
-    titleWrapper.textContent = "Select Champion";
+    titleWrapper.textContent = t("Select Champion");
     header.appendChild(titleWrapper);
 
     flyoutContent.appendChild(header);
@@ -2911,7 +3508,7 @@
     searchInput.type = "search";
     searchInput.name = "champion_search";
     searchInput.id = "champion-search-input";
-    searchInput.placeholder = "Search champions...";
+    searchInput.placeholder = t("Search champions...");
     searchInput.autocomplete = "off";
     searchInput.autocorrect = "off";
     searchInput.autocapitalize = "off";
@@ -2924,7 +3521,7 @@
     // Loading indicator
     const loadingIndicator = document.createElement("div");
     loadingIndicator.id = "champion-loading";
-    loadingIndicator.textContent = "Loading champions...";
+    loadingIndicator.textContent = t("Loading champions...");
     loadingIndicator.style.color = "#cdbe91";
     loadingIndicator.style.textAlign = "center";
     loadingIndicator.style.padding = "20px";
@@ -2984,7 +3581,7 @@
     championsGrid.innerHTML = "";
 
     if (champions.length === 0) {
-      championsGrid.innerHTML = `<div style="grid-column: 1 / -1; color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">No champions found matching your search.</div>`;
+      championsGrid.innerHTML = `<div style="grid-column: 1 / -1; color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">${escapeHtml(t("No champions found matching your search."))}</div>`;
       return;
     }
 
@@ -3061,7 +3658,7 @@
     const backButton = document.createElement("button");
     backButton.className = "back-button";
     backButton.innerHTML = '<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>';
-    backButton.setAttribute("aria-label", "Go back");
+    backButton.setAttribute("aria-label", t("Go back"));
     backButton.addEventListener("click", (e) => {
       e.stopPropagation();
       closeSkinSelection();
@@ -3072,7 +3669,7 @@
     // Title text
     const titleWrapper = document.createElement("div");
     titleWrapper.className = "dialog-title-wrapper";
-    titleWrapper.textContent = "Select Skins & Chromas";
+    titleWrapper.textContent = t("Select Skins & Chromas");
     header.appendChild(titleWrapper);
 
     flyoutContent.appendChild(header);
@@ -3080,7 +3677,7 @@
     // Loading indicator
     const loadingIndicator = document.createElement("div");
     loadingIndicator.id = "skin-loading";
-    loadingIndicator.textContent = "Loading skins...";
+    loadingIndicator.textContent = t("Loading skins...");
     loadingIndicator.style.color = "#cdbe91";
     loadingIndicator.style.textAlign = "center";
     loadingIndicator.style.padding = "20px";
@@ -3109,13 +3706,13 @@
 
     const selectionCount = document.createElement("span");
     selectionCount.id = "skin-selection-count";
-    selectionCount.textContent = "0 targets selected";
+    selectionCount.textContent = t("{count} targets selected", { count: 0 });
     selectionActions.appendChild(selectionCount);
 
     const confirmButton = document.createElement("button");
     confirmButton.id = "skin-selection-confirm";
     confirmButton.type = "button";
-    confirmButton.textContent = "Confirm & Select Mod";
+    confirmButton.textContent = t("Confirm & Select Mod");
     confirmButton.disabled = true;
     confirmButton.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -3171,7 +3768,7 @@
     const selectionCount = document.getElementById("skin-selection-count");
     if (selectionCount) {
       const count = selectedSkinIds.size;
-      selectionCount.textContent = `${count} target${count === 1 ? "" : "s"} selected`;
+      selectionCount.textContent = t(count === 1 ? "{count} target selected" : "{count} targets selected", { count });
     }
 
     const confirmButton = document.getElementById("skin-selection-confirm");
@@ -3225,7 +3822,7 @@
 
     const champions = payload.champions || [];
     if (champions.length === 0) {
-      championsGrid.innerHTML = `<div style="color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">No champions found. Please ensure League of Legends client is running.</div>`;
+      championsGrid.innerHTML = `<div style="color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">${escapeHtml(t("No champions found. Please ensure League of Legends client is running."))}</div>`;
       return;
     }
 
@@ -3272,7 +3869,7 @@
     if (header && payload.championName) {
       const titleWrapper = header.querySelector(".dialog-title-wrapper");
       if (titleWrapper) {
-        titleWrapper.textContent = `Select Skins & Chromas - ${payload.championName}`;
+        titleWrapper.textContent = `${t("Select Skins & Chromas")} - ${payload.championName}`;
       }
     }
 
@@ -3288,7 +3885,7 @@
     }
 
     if (skins.length === 0) {
-      skinsListContainer.innerHTML = `<div style="color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">No skins found for this champion.</div>`;
+      skinsListContainer.innerHTML = `<div style="color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">${escapeHtml(t("No skins found for this champion."))}</div>`;
       return;
     }
 
@@ -3334,7 +3931,7 @@
 
       const nameEl = document.createElement("div");
       nameEl.className = "skin-name";
-      nameEl.textContent = skin.name || `Skin ${baseSkinId}`;
+      nameEl.textContent = skin.name || t("Skin {id}", { id: baseSkinId });
       front.appendChild(nameEl);
 
       front.addEventListener("click", () => handleSkinSelection(championId, baseSkinId));
@@ -3343,8 +3940,8 @@
         const chromaButton = document.createElement("button");
         chromaButton.type = "button";
         chromaButton.className = "skin-chroma-button";
-        chromaButton.textContent = `Chromas ${chromas.length}`;
-        chromaButton.setAttribute("aria-label", `Show ${chromas.length} chromas`);
+        chromaButton.textContent = t("Chromas {n}", { n: chromas.length });
+        chromaButton.setAttribute("aria-label", t("Show {n} chromas", { n: chromas.length }));
         chromaButton.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -3365,7 +3962,7 @@
         backButton.type = "button";
         backButton.className = "skin-card-back-close";
         backButton.textContent = "\u2039";
-        backButton.setAttribute("aria-label", "Back to skin");
+        backButton.setAttribute("aria-label", t("Back to skin"));
         backButton.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -3398,8 +3995,8 @@
           const optionName = document.createElement("span");
           optionName.className = "skin-option-name";
           optionName.textContent = optionIndex === 0
-            ? "Base skin"
-            : (optionSkin.name || `Chroma ${optionId}`);
+            ? t("Base skin")
+            : (optionSkin.name || t("Chroma {id}", { id: optionId }));
           option.appendChild(optionName);
 
           option.addEventListener("click", (event) => {
@@ -3505,7 +4102,7 @@
     panel.style.position = "absolute";
 
     const title = document.createElement("div");
-    title.textContent = "Troubleshooting";
+    title.textContent = t("Troubleshooting");
     title.style.color = "#cdbe91";
     title.style.fontFamily = "'Beaufort for LOL', serif";
     title.style.fontSize = "16px";
@@ -3515,7 +4112,7 @@
     // Top-right close button
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
-    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.setAttribute("aria-label", t("Close"));
     closeBtn.textContent = "×";
     closeBtn.style.position = "absolute";
     closeBtn.style.top = "6px";
@@ -3549,7 +4146,7 @@
     body.style.maxHeight = "220px";
     body.style.overflow = "auto";
     body.style.lineHeight = "1.35";
-    body.textContent = "Loading…";
+    body.textContent = t("Loading…");
     panel.appendChild(body);
 
     const foot = document.createElement("div");
@@ -3598,8 +4195,8 @@
     const errors = Array.isArray(diagnosticsState.errors) ? diagnosticsState.errors : [];
     if (errors.length === 0) {
       body.innerHTML = `
-        <div style="opacity:0.85; margin-bottom:8px;">No recent errors.</div>
-        <div style="opacity:0.75;">If something feels off, open the logs folder and share the latest log in a discord ticket.</div>
+        <div style="opacity:0.85; margin-bottom:8px;">${t("No recent errors.")}</div>
+        <div style="opacity:0.75;">${t("If something feels off, open the logs folder and share the latest log in a discord ticket.")}</div>
       `.trim();
     } else {
       const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -3642,22 +4239,22 @@
 
           let fixText;
           if (thresholdAtMax) {
-            fixText = `Fix: you're already at the maximum Injection Threshold. This usually means the injection is extremely slow. Try lighter mods, close heavy apps, move League/mods to an SSD, and consider adding antivirus exclusions for the League and Rose folders. Then retry.`;
+            fixText = t("Fix: you're already at the maximum Injection Threshold. This usually means the injection is extremely slow. Try lighter mods, close heavy apps, move League/mods to an SSD, and consider adding antivirus exclusions for the League and Kaleido folders. Then retry.");
           } else if (hasTrackerData) {
-            fixText = `Fix: based on ${stats.confirmed_count} game(s), base skin confirmation takes up to ${stats.p90_ms}ms (p90). Recommended threshold: ${recS}s. Use the "Apply recommended" button below, or increase "Injection Threshold" manually.`;
+            fixText = t("Fix: based on {games} game(s), base skin confirmation takes up to {p90}ms (p90). Recommended threshold: {rec}s. Use the \"Apply recommended\" button below, or increase \"Injection Threshold\" manually.", { games: stats.confirmed_count, p90: stats.p90_ms, rec: recS });
           } else {
-            fixText = `Fix: increase "Injection Threshold (seconds)" and click Save. If the warning is still there, increase it again and Save again. Once the warning is gone, retry your skin selection.`;
+            fixText = t("Fix: increase \"Injection Threshold (seconds)\" and click Save. If the warning is still there, increase it again and Save again. Once the warning is gone, retry your skin selection.");
           }
 
           return {
             title:
               code === "BASE_SKIN_VERIFY_FAILED"
-                ? "Base skin verification failed (selected skin may not apply)"
-                : "Base skin forcing took too long (skin may not appear)",
+                ? t("Base skin verification failed (selected skin may not apply)")
+                : t("Base skin forcing took too long (skin may not appear)"),
             details: [
               code === "BASE_SKIN_VERIFY_FAILED"
-                ? `What it means: the client didn't confirm the base skin change in time.`
-                : `What it means: forcing the base skin took too long, so the selected skin may not show.`,
+                ? t("What it means: the client didn't confirm the base skin change in time.")
+                : t("What it means: forcing the base skin took too long, so the selected skin may not show."),
               fixText,
             ],
           };
@@ -3669,12 +4266,12 @@
             Number.isFinite(curMonitorTimeout) &&
             curMonitorTimeout >= (180 - 1e-6);
           return {
-            title: "Injection exceeded the timeout (process was stopped)",
+            title: t("Injection exceeded the timeout (process was stopped)"),
             details: [
-              `What it means: injection took longer than the allowed time, so ROSE stopped the process.`,
+              t("What it means: injection took longer than the allowed time, so ROSE stopped the process."),
               timeoutAtMax
-                ? `Fix: you're already at the maximum Monitor Auto-Resume Timeout. This usually means the injection is extremely slow. Try lighter mods, close heavy apps, move League/mods to an SSD, and consider adding antivirus exclusions for the League and Rose folders. Then retry.`
-                : `Fix: increase "Monitor Auto-Resume Timeout (seconds)" and click Save. If the warning is still there, increase it again and Save again. Once the warning is gone, try again.`,
+                ? t("Fix: you're already at the maximum Monitor Auto-Resume Timeout. This usually means the injection is extremely slow. Try lighter mods, close heavy apps, move League/mods to an SSD, and consider adding antivirus exclusions for the League and Kaleido folders. Then retry.")
+                : t("Fix: increase \"Monitor Auto-Resume Timeout (seconds)\" and click Save. If the warning is still there, increase it again and Save again. Once the warning is gone, try again."),
             ],
           };
         }
@@ -3683,25 +4280,25 @@
           code === 'LOW_DISK_SPACE' || /Low Disk Space/i.test(raw) || /not enough disk space/i.test(raw);
         if (isLowDiskSpace) {
           return {
-            title: 'Not enough disk space for injection',
+            title: t("Not enough disk space for injection"),
             details: [
-              'What it means: Rose could not create the overlay for the selected skin.',
-              'Fix: free up space on the drive containing Rose injection files, then retry. Map mods can require several GB.',
+              t("What it means: Kaleido could not create the overlay for the selected skin."),
+              t("Fix: free up space on the drive containing Kaleido injection files, then retry. Map mods can require several GB."),
             ],
           };
         }
 
         // Fallback: show raw error text as-is.
         return {
-          title: raw || "(unknown error)",
+          title: raw || t("(unknown error)"),
           details: [],
         };
       };
 
       const headerHtml = `
         <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:10px;">
-          <div style="font-weight:700;">Errors (most recent first)</div>
-          <div style="opacity:0.75;">Tip: after changing a setting, click <span style="font-weight:700;">Save</span>, then retry.</div>
+          <div style="font-weight:700;">${t("Errors (most recent first)")}</div>
+          <div style="opacity:0.75;">${t("Tip: after changing a setting, click")} <span style="font-weight:700;">${t("Save")}</span> ${t("then retry.")}</div>
         </div>
       `.trim();
 
@@ -3726,7 +4323,7 @@
               ${
                 detailsHtml
                   ? `<ul style="margin:0; padding-left:18px;">${detailsHtml}</ul>`
-                  : `<div style="opacity:0.8;">${escapeHtml(String(e?.text || "").trim() || "No additional details.")}</div>`
+                  : `<div style="opacity:0.8;">${escapeHtml(String(e?.text || "").trim() || t("No additional details."))}</div>`
               }
             </div>
           `.trim();
@@ -3756,18 +4353,18 @@
     const curThresholdVal = typeof currentSettings?.threshold === "number" ? currentSettings.threshold : null;
     const needsIncrease = recS !== null && curThresholdVal !== null && curThresholdVal < parseFloat(recS) - 0.001;
     const games = stats.confirmed_count;
-    const label = `${games} game${games > 1 ? "s" : ""}`;
+    const label = t(games > 1 ? "{n} games" : "{n} game", { n: games });
 
     let html;
     if (needsIncrease) {
-      html = `<span style="color:#c8aa6e;">Based on ${label}, we recommend <span style="color:#c89b3c; font-weight:700;">${recS}s</span></span>`;
+      html = `<span style="color:#c8aa6e;">${t("Based on {label}, we recommend", { label })} <span style="color:#c89b3c; font-weight:700;">${recS}s</span></span>`;
       html += ` <button id="rose-apply-recommended-btn" style="
         margin-left:4px; padding:1px 8px; border:1px solid #463714; background:#1e2328;
         color:#cdbe91; cursor:pointer; font-family:'Beaufort for LOL',serif; font-size:11px;
         vertical-align:middle;
-      ">Apply</button>`;
+      ">${t("Apply")}</button>`;
     } else {
-      html = `<span style="color:#5b9a32;">Your threshold looks good (based on ${label})</span>`;
+      html = `<span style="color:#5b9a32;">${t("Your threshold looks good (based on {label})", { label })}</span>`;
     }
 
     el.innerHTML = html;
@@ -3777,7 +4374,7 @@
       applyBtn.addEventListener("click", () => {
         if (bridge) {
           bridge.send({ type: "diagnostics-apply-recommended" });
-          applyBtn.textContent = "Applied!";
+          applyBtn.textContent = t("Applied!");
           applyBtn.disabled = true;
           applyBtn.style.opacity = "0.6";
           setTimeout(() => {
@@ -3988,6 +4585,7 @@
       bridge.subscribe("champions-list-response", handleChampionsListResponse);
       bridge.subscribe("champion-skins-response", handleChampionSkinsResponse);
       bridge.subscribe("folder-opened-response", handleFolderOpenedResponse);
+      bridge.subscribe("profiles-data", handleProfilesData);
 
       // On every (re)connect, sync state
       bridge.onReady(() => {

@@ -2,7 +2,7 @@ const baseData = [
     {
         groupName: "RoseBackground",
         titleKey: "el_RoseBackground",
-        titleName: "Rose / Background",
+        titleName: "Kaleido / Background",
         capitalTitleKey: "el_RoseBackground_capital", 
         capitalTitleName: "Rose / Background",
         element: [

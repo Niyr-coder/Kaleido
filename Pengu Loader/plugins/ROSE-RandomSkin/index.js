@@ -1,6 +1,6 @@
 /**
  * @name Rose-RandomSkin
- * @author Rose Team
+ * @author Krealos
  * @description Random skin for Pengu Loader
  * @link https://github.com/FlorentTariolle/Rose-RandomSkin
  */
