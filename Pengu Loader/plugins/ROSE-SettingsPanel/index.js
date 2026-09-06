@@ -229,7 +229,7 @@
       "{wins}/{games} games · {rate}%": "{wins}/{games} partidas · {rate}%",
       "Overall: {wins}/{games} · {rate}%": "Global: {wins}/{games} · {rate}%",
       "(needs {n} games)": "(necesita {n} partidas)",
-      "Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme · Ctrl+B blacklist · Ctrl+1…5 apply favorites": "Atajos en la selección de campeón: Ctrl+← / Ctrl+→ recorre skins recientes · Ctrl+F marca favorita · Ctrl+T iguala la temática de un amigo · Ctrl+B veta la skin · Ctrl+1…5 aplica tus favoritas",
+      "Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme · Ctrl+B blacklist · Ctrl+1…5 apply favorites · Ctrl+P Party panel": "Atajos en la selección de campeón: Ctrl+← / Ctrl+→ recorre skins recientes · Ctrl+F marca favorita · Ctrl+T iguala la temática de un amigo · Ctrl+B veta la skin · Ctrl+1…5 aplica tus favoritas · Ctrl+P abre el panel Party",
       "Restarting Kaleido to install the update…": "Reiniciando Kaleido para instalar la actualización…",
     },
   };
@@ -2654,7 +2654,7 @@
 
     const hotkeysHint = document.createElement("div");
     hotkeysHint.className = "kaleido-hint";
-    hotkeysHint.textContent = t("Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme · Ctrl+B blacklist · Ctrl+1…5 apply favorites");
+    hotkeysHint.textContent = t("Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme · Ctrl+B blacklist · Ctrl+1…5 apply favorites · Ctrl+P Party panel");
     form.appendChild(hotkeysHint);
 
     // Game path section

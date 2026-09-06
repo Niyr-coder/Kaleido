@@ -152,6 +152,11 @@
   function onKeyDown(e) {
     if (!bridge || !e.ctrlKey || e.altKey || e.metaKey) return;
     if (isTypingTarget(e.target)) return;
+    if ((e.key === "p" || e.key === "P") && !e.shiftKey) {
+      window.dispatchEvent(new CustomEvent("kaleido-toggle-party"));
+      e.preventDefault(); e.stopPropagation();
+      return;
+    }
     if (currentPhase && currentPhase !== "ChampSelect" && currentPhase !== "FINALIZATION") return;
 
     let handled = false;
@@ -169,6 +174,9 @@
       handled = true;
     } else if ((e.key === "b" || e.key === "B") && !e.shiftKey) {
       bridge.send({ type: "blacklist-toggle" });
+      handled = true;
+    } else if ((e.key === "p" || e.key === "P") && !e.shiftKey) {
+      window.dispatchEvent(new CustomEvent("kaleido-toggle-party"));
       handled = true;
     } else if (/^[1-5]$/.test(e.key)) {
       bridge.send({ type: "apply-favorite", index: Number(e.key) - 1 });
@@ -206,7 +214,7 @@
       showToast(kt(text), payload.kind || "info", payload.action || null);
     });
     document.addEventListener("keydown", onKeyDown, true);
-    log("info", "hotkeys ready (Ctrl+Left/Right recent skins, Ctrl+F favorite, Ctrl+T match party theme, Ctrl+B blacklist, Ctrl+1-5 favorites)");
+    log("info", "hotkeys ready (Ctrl+Left/Right recent skins, Ctrl+F favorite, Ctrl+T match party theme, Ctrl+B blacklist, Ctrl+1-5 favorites, Ctrl+P party panel)");
   }
 
   if (typeof document === "undefined") return;
