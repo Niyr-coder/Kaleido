@@ -21,6 +21,7 @@ original sigue aplicando.
 - **Skins recientes con atajos.** Ctrl+← y Ctrl+→ en la selección de campeón recorren las últimas skins usadas con ese campeón.
 - **Historial de partidas.** Cada skin inyectada queda registrada con modo de juego, perfil y resultado (victoria, derrota o remake) cuando el cliente lo informa. Se ve en el panel y se puede limpiar.
 - **Exportar e importar perfiles.** Un código `KPROF1:...` que se copia al portapapeles y que un amigo pega en su panel.
+- **Ver la skin de cada amigo en el modo Party.** Cada amigo conectado muestra su campeón, la miniatura de la skin, el nombre y el chroma (o el mod personalizado). Además, en partida el modo Party inyecta las skins de tus amigos para que las veas en el juego.
 - **Copiar la skin de un amigo en el modo Party.** Si un amigo de la party ya eligió skin para el mismo campeón, un botón la aplica en tu selección.
 - **Estado en la bandeja.** El menú del icono muestra el perfil activo, la última skin inyectada con su resultado y cuántas skins hay descargadas.
 - **Aviso de skins nuevas.** Si la sincronización al iniciar descargó skins nuevas, la bandeja lo notifica.

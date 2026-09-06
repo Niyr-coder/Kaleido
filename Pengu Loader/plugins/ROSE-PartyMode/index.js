@@ -36,6 +36,10 @@
     "Friend connected!": "¡Amigo conectado!",
     "Failed to connect": "No se pudo conectar",
     "Copy skin": "Copiar skin",
+    "No skin picked yet": "Aún no eligió skin",
+    "Custom mod": "Mod personalizado",
+    "Chroma": "Chroma",
+    "Skin": "Skin",
   };
   function kt(text, vars) {
     let lang = "es";
@@ -43,6 +47,79 @@
     let out = (lang === "es" && Object.prototype.hasOwnProperty.call(KALEIDO_I18N_ES, text)) ? KALEIDO_I18N_ES[text] : text;
     if (vars) Object.keys(vars).forEach((k) => { out = out.split(`{${k}}`).join(String(vars[k])); });
     return out;
+  }
+
+  // ---- Kaleido: resolve a friend's skin selection to names + images (LCU game-data, client-side) ----
+  const _championDataCache = {};
+  function getChampionData(championId) {
+    const id = Number(championId);
+    if (!id) return Promise.resolve(null);
+    if (_championDataCache[id]) return _championDataCache[id];
+    _championDataCache[id] = fetch(`/lol-game-data/assets/v1/champions/${id}.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((data) => {
+        if (!data) delete _championDataCache[id];
+        return data;
+      });
+    return _championDataCache[id];
+  }
+
+  async function describePeerSelection(sel) {
+    const championId = Number(sel && sel.champion_id) || 0;
+    const skinId = Number(sel && sel.skin_id) || 0;
+    const chromaId = Number(sel && sel.chroma_id) || 0;
+    const out = {
+      championName: championId ? `#${championId}` : "",
+      skinName: skinId ? `${kt("Skin")} ${skinId}` : "",
+      chromaName: "",
+      customMod: sel && sel.custom_mod_path ? String(sel.custom_mod_path).split(/[\/]/).pop() : "",
+      iconUrl: championId ? `/lol-game-data/assets/v1/champion-icons/${championId}.png` : "",
+      tileUrl: championId && skinId ? `/lol-game-data/assets/v1/champion-tiles/${championId}/${skinId}.jpg` : "",
+    };
+    const data = await getChampionData(championId);
+    if (!data) return out;
+    out.championName = data.name || out.championName;
+    const skins = Array.isArray(data.skins) ? data.skins : [];
+    let skin = skins.find((k) => Number(k.id) === skinId) || null;
+    let chroma = null;
+    if (!skin && skinId) {
+      // skin_id may itself be a chroma id
+      for (const k of skins) {
+        const c = (k.chromas || []).find((x) => Number(x.id) === skinId);
+        if (c) { skin = k; chroma = c; break; }
+      }
+    }
+    if (skin && chromaId && chromaId !== Number(skin.id)) {
+      chroma = (skin.chromas || []).find((x) => Number(x.id) === chromaId) || chroma;
+    }
+    if (skin) {
+      out.skinName = skin.name || out.skinName;
+      out.tileUrl = `/lol-game-data/assets/v1/champion-tiles/${championId}/${skin.id}.jpg`;
+    }
+    if (chroma) out.chromaName = chroma.name || `${kt("Chroma")} ${chroma.id}`;
+    return out;
+  }
+
+  function hydratePeerSkinCards(peers) {
+    (peers || []).forEach((peer) => {
+      if (!peer || !peer.skin_selection) return;
+      const card = document.querySelector(`.peer-skin-card[data-summoner="${peer.summoner_id}"]`);
+      if (!card) return;
+      describePeerSelection(peer.skin_selection).then((info) => {
+        const live = document.querySelector(`.peer-skin-card[data-summoner="${peer.summoner_id}"]`);
+        if (!live) return;
+        const title = info.customMod
+          ? `${kt("Custom mod")}: ${info.customMod}`
+          : `${info.skinName}${info.chromaName ? ` · ${info.chromaName}` : ""}`;
+        live.innerHTML = `
+          ${info.tileUrl ? `<img class="peer-skin-tile" src="${info.tileUrl}" alt="" onerror="this.style.display='none'">` : ""}
+          <div class="peer-skin-text">
+            <span class="peer-skin-champ">${info.iconUrl ? `<img class="peer-skin-icon" src="${info.iconUrl}" alt="" onerror="this.style.display='none'">` : ""}${escapeHtml(info.championName)}</span>
+            <span class="peer-skin-name" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+          </div>`;
+      });
+    });
   }
 
   let BRIDGE_PORT = 50000;
@@ -454,6 +531,15 @@
       line-height: 14px;
     }
 
+    /* Kaleido: friend's skin card (champion icon + skin tile + names) */
+    .peer-skin-card { display:flex; align-items:center; gap:8px; margin-top:4px; }
+    .peer-skin-tile { width:40px; height:40px; object-fit:cover; border:1px solid #463714; flex:0 0 auto; }
+    .peer-skin-text { display:flex; flex-direction:column; min-width:0; }
+    .peer-skin-champ { display:flex; align-items:center; gap:4px; font-family: var(--font-body), Arial, sans-serif; font-size:10px; color:#a09b8c; line-height:14px; }
+    .peer-skin-icon { width:14px; height:14px; border-radius:50%; border:1px solid #463714; }
+    .peer-skin-name { font-family: var(--font-body), Arial, sans-serif; font-size:11px; color:#c89b3c; line-height:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:190px; }
+    .peer-skin-none { display:block; margin-top:2px; font-size:10px; color:#5b5a56; line-height:14px; }
+
     .peer-copy { background:#1e2328; border:1px solid #463714; color:#cdbe91; font-family:'Beaufort for LOL', serif; font-size:10px; padding:2px 8px; cursor:pointer; margin-right:6px; }
       .peer-copy:hover { border-color:#8b5cf6; color:#f0e6d2; }
       .peer-remove {
@@ -847,8 +933,8 @@
             const displayName = isWaiting ? kt("Friend") : escapeHtml(peer.summoner_name);
             const lobbyStatus = peer.in_lobby ? "in-lobby" : "";
             const skinInfo = peer.skin_selection
-              ? `Skin: ${peer.skin_selection.skin_name || peer.skin_selection.skin_id}`
-              : "";
+              ? `<div class="peer-skin-card" data-summoner="${peer.summoner_id}"><span class="peer-skin-text"><span class="peer-skin-name">${kt("Skin")} ${escapeHtml(String(peer.skin_selection.skin_id || ""))}</span></span></div>`
+              : (cs === "connected" && peer.in_lobby ? `<span class="peer-skin-none">${kt("No skin picked yet")}</span>` : "");
 
             return `
             <div class="peer-item" data-summoner-id="${peer.summoner_id}">
@@ -856,7 +942,7 @@
                 <span class="peer-name">${displayName}</span>
                 ${isWaiting ? '<span class="peer-status waiting"><span class="spinner"></span> ' : `<span class="peer-status ${lobbyStatus}">`}
                 ${escapeHtml(statusText)}</span>
-                ${skinInfo ? `<span class="peer-skin">${skinInfo}</span>` : ""}
+                ${skinInfo}
               </div>
               ${peer.skin_selection ? `<button class="peer-copy" onclick="window.kaleidoPartyCopySkin(${peer.summoner_id})">${kt("Copy skin")}</button>` : ""}
               <button class="peer-remove" title="${kt("Remove")}" onclick="window.rosePartyRemovePeer(${peer.summoner_id})">
@@ -868,6 +954,7 @@
           `;
           })
           .join("");
+        hydratePeerSkinCards(allPeers);
       }
     } else {
       statusEl.className = "party-status offline";
@@ -945,7 +1032,7 @@
 
   // Global function for remove button onclick
   window.kaleidoPartyCopySkin = (summonerId) => {
-    if (bridge) bridge.send({ type: "party-copy-skin", summonerId: Number(summonerId) });
+    sendBridgeMessage({ type: "party-copy-skin", summonerId: Number(summonerId) });
   };
   window.rosePartyRemovePeer = function (summonerId) {
     sendBridgeMessage({ type: "party-remove-peer", summoner_id: summonerId });
