@@ -30,6 +30,7 @@ original sigue aplicando.
 - **Copiar la skin de un amigo en el modo Party.** Si un amigo de la party ya eligió skin para el mismo campeón, un botón la aplica en tu selección.
 - **Estado en la bandeja.** El menú del icono muestra el perfil activo, la última skin inyectada con su resultado y cuántas skins hay descargadas.
 - **Aviso de skins nuevas.** Si la sincronización al iniciar descargó skins nuevas, la bandeja lo notifica.
+- **Insignia de actualización.** Kaleido comprueba GitHub al arrancar y cada seis horas; si hay versión nueva aparece un "1" morado sobre el icono K del cliente, un aviso, y el botón "Actualizar ahora" ya listo en el panel. Se desactiva junto con "Buscar actualizaciones al iniciar".
 - **Buscar actualizaciones desde el panel.** Un botón consulta GitHub al momento; si hay versión nueva aparece "Actualizar ahora", que reinicia Kaleido y la instala sin volver a preguntar.
 - **Telemetría y actualizaciones desde el panel.** Dos casillas en "Privacidad y actualizaciones": enviar estadísticas anónimas (apagado por defecto) y buscar actualizaciones al iniciar (encendido por defecto). Se guardan en `config.ini` como `analytics_enabled` y `auto_update`.
 

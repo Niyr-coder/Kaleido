@@ -195,6 +195,7 @@
       "Update now": "Actualizar ahora",
       "Could not reach GitHub": "No se pudo conectar con GitHub",
       "Kaleido will restart and install the update.": "Kaleido se reiniciará e instalará la actualización.",
+      "Kaleido {version} available": "Kaleido {version} disponible",
       "Restarting Kaleido to install the update…": "Reiniciando Kaleido para instalar la actualización…",
     },
   };
@@ -333,6 +334,8 @@
       .kaleido-result.loss { color:#ff8a80; border-color:#c0392b; }
       .kaleido-result.remake { color:#c8aa6e; border-color:#c8aa6e; }
       .kaleido-history-list { max-height:180px; }
+      .kaleido-update-badge { position:absolute; top:-8px; left:-8px; min-width:16px; height:16px; padding:0 4px; box-sizing:border-box; border-radius:8px; background:#8b5cf6; color:#fff; font:700 10px/16px 'Beaufort for LOL', serif; text-align:center; box-shadow:0 0 0 2px #010a13, 0 0 8px rgba(139,92,246,0.8); pointer-events:none; }
+      .kaleido-update-dot { display:inline-block; margin-left:6px; min-width:14px; height:14px; padding:0 3px; box-sizing:border-box; border-radius:7px; background:#8b5cf6; color:#fff; font:700 9px/14px 'Beaufort for LOL', serif; text-align:center; vertical-align:middle; }
     `;
   }
 
@@ -1437,6 +1440,9 @@
       relayUrl: payload.relayUrl || "",
       relayConfigured: !!payload.relayConfigured,
     };
+    if (payload.updateAvailable !== undefined) {
+      handleUpdateStatus({ available: !!payload.updateAvailable, remoteVersion: payload.updateVersion || null });
+    }
     // Update version badge if the panel is already open
     const badge = document.getElementById("rose-version-badge");
     if (badge && payload.version) {
@@ -1461,6 +1467,7 @@
   let diagnosticsDialog = null;
   let diagnosticsState = { errors: [], path: "", settingsSnapshot: null, baseSkinStats: null };
   let errorBadgeState = { hasErrors: false, count: 0 };
+  let updateBadgeState = { available: false, version: null };
   let _badgeObserverStarted = false;
   let _pendingSave = null;
   let _diagnosticsPollId = null;
@@ -1665,7 +1672,59 @@
     }
   }
 
+  function applyUpdateBadge() {
+    // Kaleido: "1" badge on the sidebar icon and on the "Check for updates" button when a release is available
+    const navItem = document.querySelector("lol-uikit-navigation-item.menu_item_Golden.Rose");
+    if (navItem) {
+      const host = navItem.querySelector(".menu-item-icon-wrapper") || navItem.querySelector(".menu-item-icon") || navItem;
+      host.style.position = host.style.position || "relative";
+      let badge = host.querySelector("#kaleido-update-badge");
+      if (updateBadgeState.available) {
+        if (!badge) {
+          badge = document.createElement("div");
+          badge.id = "kaleido-update-badge";
+          badge.className = "kaleido-update-badge";
+          badge.textContent = "1";
+          host.appendChild(badge);
+        }
+        badge.title = t("Kaleido {version} available", { version: updateBadgeState.version || "" });
+      } else if (badge) {
+        badge.remove();
+      }
+    }
+    const btn = document.getElementById("kaleido-update-check");
+    if (btn) {
+      let dot = btn.querySelector(".kaleido-update-dot");
+      if (updateBadgeState.available) {
+        if (!dot) {
+          dot = document.createElement("span");
+          dot.className = "kaleido-update-dot";
+          dot.textContent = "1";
+          btn.appendChild(dot);
+        }
+      } else if (dot) {
+        dot.remove();
+      }
+    }
+  }
+
+  function handleUpdateStatus(payload) {
+    updateBadgeState = { available: !!payload.available, version: payload.remoteVersion || null };
+    applyUpdateBadge();
+    if (updateBadgeState.available) {
+      // Reflect it in the panel if it is open
+      const status = document.getElementById("kaleido-update-status");
+      const installBtn = document.getElementById("kaleido-update-install");
+      if (status) {
+        status.style.color = "";
+        status.textContent = t("Version {version} available", { version: updateBadgeState.version || "?" });
+      }
+      if (installBtn) installBtn.hidden = false;
+    }
+  }
+
   function applyErrorBadges() {
+    try { applyUpdateBadge(); } catch (e) {}
     // Sidebar "Golden Rose" nav icon badge
     const navItem = document.querySelector(
       "lol-uikit-navigation-item.menu_item_Golden.Rose"
@@ -2396,6 +2455,11 @@
     updateStatus.className = "kaleido-hint";
     updateStatus.style.textAlign = "left";
     privacySection.appendChild(updateStatus);
+    if (updateBadgeState.available) {
+      updateStatus.textContent = t("Version {version} available", { version: updateBadgeState.version || "?" });
+      installBtn.hidden = false;
+    }
+    setTimeout(applyUpdateBadge, 0);
 
     form.appendChild(privacySection);
 
@@ -5185,6 +5249,7 @@
       bridge.subscribe("history-data", handleHistoryData);
       bridge.subscribe("profile-export-result", handleProfileExportResult);
       bridge.subscribe("update-check-result", handleUpdateCheckResult);
+      bridge.subscribe("update-status", handleUpdateStatus);
 
       // On every (re)connect, sync state
       bridge.onReady(() => {

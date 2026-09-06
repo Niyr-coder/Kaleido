@@ -447,6 +447,7 @@ class MessageHandler:
     def _handle_settings_request(self, payload: dict) -> None:
         """Handle settings request"""
         try:
+            self._start_update_watch()
             threshold = get_config_float("General", "injection_threshold", 0.5)
             monitor_auto_resume_timeout = get_config_float("General", "monitor_auto_resume_timeout", 60.0)
             autostart = is_registered_for_autostart()
@@ -471,6 +472,8 @@ class MessageHandler:
                 "analyticsEnabled": get_config_bool("General", "analytics_enabled", ANALYTICS_USER_DEFAULT),
                 "autoUpdate": get_config_bool("General", "auto_update", AUTO_UPDATE_USER_DEFAULT),
                 "randomMode": (get_config_option("General", "random_mode", "all") or "all"),
+                "updateAvailable": bool((getattr(self, "_update_status", None) or {}).get("available")),
+                "updateVersion": (getattr(self, "_update_status", None) or {}).get("remoteVersion"),
                 "relayUrl": (get_config_option("General", "relay_url") or ""),
                 "relayConfigured": bool(__import__("party.network.ws_relay", fromlist=["get_relay_url"]).get_relay_url()),
             }
@@ -2521,30 +2524,85 @@ class MessageHandler:
     # ------------------------------------------------------------------
     # Kaleido: manual update check + one-click update (restart through the launcher)
     # ------------------------------------------------------------------
+    UPDATE_WATCH_INTERVAL_S = 6 * 3600
+
+    def _check_update_now(self) -> dict:
+        """Query the latest GitHub release and compare with APP_VERSION (network, call from a thread)."""
+        from config import APP_VERSION
+        result = {"type": "update-check-result", "localVersion": APP_VERSION, "remoteVersion": None,
+                  "available": False, "url": None, "error": None}
+        try:
+            from launcher.update.github_client import GitHubClient
+            from launcher.update.update_sequence import _parse_semver_like, _cmp_version
+            client = GitHubClient(timeout=10)
+            release = client.get_latest_release()
+            if not release:
+                result["error"] = "Could not reach GitHub"
+            else:
+                remote = client.get_release_version(release) or ""
+                result["remoteVersion"] = remote.lstrip("vV")
+                result["url"] = release.get("html_url")
+                cmp = _cmp_version(_parse_semver_like(remote), _parse_semver_like(APP_VERSION))
+                result["available"] = cmp == 1 and client.get_zip_asset(release) is not None
+        except Exception as exc:  # noqa: BLE001
+            result["error"] = str(exc)
+        self._update_status = {
+            "available": bool(result["available"]),
+            "remoteVersion": result["remoteVersion"],
+            "localVersion": result["localVersion"],
+            "checkedAt": int(time.time()),
+        }
+        return result
+
+    def _update_status_payload(self) -> dict:
+        status = getattr(self, "_update_status", None) or {}
+        return {
+            "type": "update-status",
+            "available": bool(status.get("available")),
+            "remoteVersion": status.get("remoteVersion"),
+            "localVersion": status.get("localVersion"),
+        }
+
+    def _start_update_watch(self) -> None:
+        """Kaleido: check for updates in the background at startup and every few hours, then push a badge."""
+        if getattr(self, "_update_watch_started", False):
+            return
+        self._update_watch_started = True
+        import threading
+
+        def worker():
+            announced = None
+            first = True
+            while True:
+                try:
+                    if not first:
+                        time.sleep(self.UPDATE_WATCH_INTERVAL_S)
+                    else:
+                        time.sleep(20)  # let the client settle after startup
+                    first = False
+                    if not get_config_bool("General", "auto_update", AUTO_UPDATE_USER_DEFAULT):
+                        continue
+                    result = self._check_update_now()
+                    if result.get("available"):
+                        payload = self._update_status_payload()
+                        self._send_response(json.dumps(payload))
+                        if announced != result.get("remoteVersion"):
+                            announced = result.get("remoteVersion")
+                            self._send_toast(f"Kaleido {announced} available", "info")
+                            log.info(f"[Kaleido] Update badge: version {announced} available")
+                except Exception as exc:  # noqa: BLE001
+                    log.debug(f"[Kaleido] update watch error: {exc}")
+
+        threading.Thread(target=worker, name="KaleidoUpdateWatch", daemon=True).start()
+
     def _handle_update_check(self, payload: dict) -> None:
         import threading
 
         def worker():
-            from config import APP_VERSION
-            result = {"type": "update-check-result", "localVersion": APP_VERSION, "remoteVersion": None,
-                      "available": False, "url": None, "error": None}
-            try:
-                from launcher.update.github_client import GitHubClient
-                from launcher.update.update_sequence import _parse_semver_like, _cmp_version
-                client = GitHubClient(timeout=10)
-                release = client.get_latest_release()
-                if not release:
-                    result["error"] = "Could not reach GitHub"
-                else:
-                    remote = client.get_release_version(release) or ""
-                    result["remoteVersion"] = remote.lstrip("vV")
-                    result["url"] = release.get("html_url")
-                    cmp = _cmp_version(_parse_semver_like(remote), _parse_semver_like(APP_VERSION))
-                    result["available"] = cmp == 1 and client.get_zip_asset(release) is not None
-            except Exception as exc:  # noqa: BLE001
-                result["error"] = str(exc)
+            result = self._check_update_now()
             log.info(f"[Kaleido] Manual update check: {result}")
             self._send_response(json.dumps(result))
+            self._send_response(json.dumps(self._update_status_payload()))
 
         threading.Thread(target=worker, name="KaleidoUpdateCheck", daemon=True).start()
 

@@ -33,6 +33,7 @@
     "Your friend picked a skin of another champion": "Tu amigo eligió una skin de otro campeón",
     "Your champion has no themed skins": "Tu campeón no tiene skins temáticas",
     "Party color cleared": "Color de party quitado",
+    "Kaleido {version} available": "Kaleido {version} disponible",
     "color": "color", "red": "rojo", "blue": "azul", "green": "verde", "yellow": "amarillo", "purple": "morado",
     "pink": "rosa", "orange": "naranja", "white": "blanco", "black": "negro",
   };
@@ -150,6 +151,8 @@
     bridge.subscribe("kaleido-toast", (payload) => {
       if (!payload || !payload.text) return;
       let text = String(payload.text);
+      const verMatch = text.match(/^Kaleido ([0-9.]+) available$/);
+      if (verMatch) text = kt("Kaleido {version} available").replace("{version}", verMatch[1]);
       const colorMatch = text.match(/^(.*): color ([a-z]+)$/);
       if (colorMatch) text = `${colorMatch[1]}: ${kt("color")} ${kt(colorMatch[2])}`;
       showToast(kt(text), payload.kind || "info");
