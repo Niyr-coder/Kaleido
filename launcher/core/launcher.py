@@ -94,6 +94,15 @@ def _confirm_update(dialog: UpdateDialog, remote_version: str, local_version: st
     if _consume_update_accept_flag():
         updater_log.info("Update pre-accepted from the settings panel; skipping the prompt.")
         return True
+    try:
+        from config import get_config_bool, FORCE_UPDATE_USER_DEFAULT
+        if get_config_bool("General", "force_update", FORCE_UPDATE_USER_DEFAULT):
+            updater_log.info("force_update is on: installing without asking.")
+            dialog.set_status(f"Kaleido {remote_version}: installing update…")
+            dialog.pump_messages()
+            return True
+    except Exception:  # noqa: BLE001
+        pass
     dialog.set_marquee(False)
     dialog.set_detail("Update available")
     dialog.set_status(f"Kaleido {remote_version} is ready to install.")

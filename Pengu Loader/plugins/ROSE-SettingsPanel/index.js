@@ -196,6 +196,11 @@
       "Could not reach GitHub": "No se pudo conectar con GitHub",
       "Kaleido will restart and install the update.": "Kaleido se reiniciará e instalará la actualización.",
       "Kaleido {version} available": "Kaleido {version} disponible",
+      "Install updates automatically (when not in champion select or in game)": "Instalar actualizaciones automáticamente (fuera de selección y de partida)",
+      "Update available": "Actualización disponible",
+      "Kaleido {version} is ready. You have {local}.": "Kaleido {version} está lista. Tienes la {local}.",
+      "Later": "Más tarde",
+      "Updating to Kaleido {version} in {seconds} s": "Actualizando a Kaleido {version} en {seconds} s",
       "Restarting Kaleido to install the update…": "Reiniciando Kaleido para instalar la actualización…",
     },
   };
@@ -335,6 +340,11 @@
       .kaleido-result.remake { color:#c8aa6e; border-color:#c8aa6e; }
       .kaleido-history-list { max-height:180px; }
       .kaleido-update-badge { position:absolute; top:-8px; left:-8px; min-width:16px; height:16px; padding:0 4px; box-sizing:border-box; border-radius:8px; background:#8b5cf6; color:#fff; font:700 10px/16px 'Beaufort for LOL', serif; text-align:center; box-shadow:0 0 0 2px #010a13, 0 0 8px rgba(139,92,246,0.8); pointer-events:none; }
+      .kaleido-modal-overlay { position:fixed; inset:0; z-index:100001; background:rgba(1,10,19,0.72); display:flex; align-items:center; justify-content:center; }
+      .kaleido-modal { background:#010a13; border:1px solid #8b5cf6; box-shadow:0 0 0 1px #463714, 0 12px 40px rgba(0,0,0,0.8); padding:20px 24px; min-width:340px; max-width:460px; font-family:'Beaufort for LOL', serif; }
+      .kaleido-modal-title { color:#f0e6d2; font-size:16px; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:10px; }
+      .kaleido-modal-body { color:#cdbe91; font-size:13px; line-height:1.5; margin-bottom:16px; }
+      .kaleido-modal-actions { display:flex; gap:8px; justify-content:flex-end; }
       .kaleido-update-dot { display:inline-block; margin-left:6px; min-width:14px; height:14px; padding:0 3px; box-sizing:border-box; border-radius:7px; background:#8b5cf6; color:#fff; font:700 9px/14px 'Beaufort for LOL', serif; text-align:center; vertical-align:middle; }
     `;
   }
@@ -1437,6 +1447,7 @@
       analyticsEnabled: !!payload.analyticsEnabled,
       autoUpdate: payload.autoUpdate === undefined ? true : !!payload.autoUpdate,
       randomMode: payload.randomMode || "all",
+      forceUpdate: payload.forceUpdate === undefined ? true : !!payload.forceUpdate,
       relayUrl: payload.relayUrl || "",
       relayConfigured: !!payload.relayConfigured,
     };
@@ -1708,9 +1719,56 @@
     }
   }
 
+  let _updateModalShownFor = null;
+
+  function showUpdateModal(version, localVersion) {
+    if (!version || _updateModalShownFor === version) return;
+    _updateModalShownFor = version;
+    const existing = document.getElementById("kaleido-update-modal");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "kaleido-update-modal";
+    overlay.className = "kaleido-modal-overlay";
+    overlay.innerHTML = `
+      <div class="kaleido-modal">
+        <div class="kaleido-modal-title">${escapeHtml(t("Update available"))}</div>
+        <div class="kaleido-modal-body">${escapeHtml(t("Kaleido {version} is ready. You have {local}.", { version, local: localVersion || currentSettings.version || "?" }))}</div>
+        <div class="kaleido-modal-actions">
+          <button type="button" class="kaleido-btn primary" id="kaleido-modal-update">${escapeHtml(t("Update now"))}</button>
+          <button type="button" class="kaleido-btn" id="kaleido-modal-later">${escapeHtml(t("Later"))}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#kaleido-modal-update").addEventListener("click", () => {
+      if (bridge) bridge.send({ type: "update-install" });
+      overlay.querySelector(".kaleido-modal-body").textContent = t("Kaleido will restart and install the update.");
+      overlay.querySelector(".kaleido-modal-actions").remove();
+    });
+    overlay.querySelector("#kaleido-modal-later").addEventListener("click", () => overlay.remove());
+  }
+
+  function handleUpdateForced(payload) {
+    // Automatic install is about to restart Kaleido: make it visible even if the toast is missed
+    const existing = document.getElementById("kaleido-update-modal");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "kaleido-update-modal";
+    overlay.className = "kaleido-modal-overlay";
+    overlay.innerHTML = `
+      <div class="kaleido-modal">
+        <div class="kaleido-modal-title">${escapeHtml(t("Update available"))}</div>
+        <div class="kaleido-modal-body">${escapeHtml(t("Updating to Kaleido {version} in {seconds} s", { version: payload.remoteVersion || "?", seconds: payload.seconds || 15 }))}</div>
+      </div>`;
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.remove(), ((payload.seconds || 15) + 5) * 1000);
+  }
+
   function handleUpdateStatus(payload) {
     updateBadgeState = { available: !!payload.available, version: payload.remoteVersion || null };
     applyUpdateBadge();
+    if (updateBadgeState.available && currentSettings.forceUpdate === false) {
+      showUpdateModal(updateBadgeState.version, payload.localVersion || currentSettings.version);
+    }
     if (updateBadgeState.available) {
       // Reflect it in the panel if it is open
       const status = document.getElementById("kaleido-update-status");
@@ -2409,6 +2467,20 @@
     autoUpdateText.textContent = t("Check for updates on startup");
     autoUpdateWrapper.appendChild(autoUpdateText);
     privacySection.appendChild(autoUpdateWrapper);
+
+    const forceUpdateWrapper = document.createElement("div");
+    forceUpdateWrapper.className = "settings-checkbox-wrapper";
+    forceUpdateWrapper.style.marginTop = "6px";
+    const forceUpdateCheckbox = document.createElement("input");
+    forceUpdateCheckbox.type = "checkbox";
+    forceUpdateCheckbox.className = "settings-checkbox";
+    forceUpdateCheckbox.id = "forceupdate-checkbox";
+    forceUpdateCheckbox.checked = true;
+    forceUpdateWrapper.appendChild(forceUpdateCheckbox);
+    const forceUpdateText = document.createElement("span");
+    forceUpdateText.textContent = t("Install updates automatically (when not in champion select or in game)");
+    forceUpdateWrapper.appendChild(forceUpdateText);
+    privacySection.appendChild(forceUpdateWrapper);
 
     // Manual update check (Kaleido)
     const updateRow = document.createElement("div");
@@ -3830,6 +3902,10 @@
     if (randomModeSelect) {
       randomModeSelect.value = currentSettings.randomMode || "all";
     }
+    const forceUpdateCheckbox = document.getElementById("forceupdate-checkbox");
+    if (forceUpdateCheckbox) {
+      forceUpdateCheckbox.checked = currentSettings.forceUpdate !== false;
+    }
     const relayInput = document.getElementById("relay-url-input");
     if (relayInput) {
       relayInput.value = currentSettings.relayUrl || "";
@@ -3931,6 +4007,8 @@
     const randomMode = randomModeSelect ? randomModeSelect.value : "all";
     const relayInput = document.getElementById("relay-url-input");
     const relayUrl = relayInput ? relayInput.value.trim() : "";
+    const forceUpdateCheckbox = document.getElementById("forceupdate-checkbox");
+    const forceUpdate = forceUpdateCheckbox ? forceUpdateCheckbox.checked : true;
 
     // Clamp threshold between 0.30 and 2.0
     const clampedThreshold = Math.max(0.3, Math.min(2.0, threshold));
@@ -3950,6 +4028,7 @@
       autoUpdate: autoUpdate,
       randomMode: randomMode,
       relayUrl: relayUrl,
+      forceUpdate: forceUpdate,
     });
 
     log("info", "Settings save requested", {
@@ -5250,6 +5329,7 @@
       bridge.subscribe("profile-export-result", handleProfileExportResult);
       bridge.subscribe("update-check-result", handleUpdateCheckResult);
       bridge.subscribe("update-status", handleUpdateStatus);
+      bridge.subscribe("update-forced", handleUpdateForced);
 
       // On every (re)connect, sync state
       bridge.onReady(() => {

@@ -34,6 +34,7 @@
     "Your champion has no themed skins": "Tu campeón no tiene skins temáticas",
     "Party color cleared": "Color de party quitado",
     "Kaleido {version} available": "Kaleido {version} disponible",
+    "Updating to Kaleido {version} in {seconds} s": "Actualizando a Kaleido {version} en {seconds} s",
     "color": "color", "red": "rojo", "blue": "azul", "green": "verde", "yellow": "amarillo", "purple": "morado",
     "pink": "rosa", "orange": "naranja", "white": "blanco", "black": "negro",
   };
@@ -153,6 +154,8 @@
       let text = String(payload.text);
       const verMatch = text.match(/^Kaleido ([0-9.]+) available$/);
       if (verMatch) text = kt("Kaleido {version} available").replace("{version}", verMatch[1]);
+      const cdMatch = text.match(/^Updating to Kaleido ([0-9.]+) in ([0-9]+) s$/);
+      if (cdMatch) text = kt("Updating to Kaleido {version} in {seconds} s").replace("{version}", cdMatch[1]).replace("{seconds}", cdMatch[2]);
       const colorMatch = text.match(/^(.*): color ([a-z]+)$/);
       if (colorMatch) text = `${colorMatch[1]}: ${kt("color")} ${kt(colorMatch[2])}`;
       showToast(kt(text), payload.kind || "info");

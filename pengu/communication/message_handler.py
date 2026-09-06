@@ -25,6 +25,8 @@ from config import (
     set_config_option,
     ANALYTICS_USER_DEFAULT,
     AUTO_UPDATE_USER_DEFAULT,
+    FORCE_UPDATE_USER_DEFAULT,
+    UNSAFE_UPDATE_PHASES,
 )
 from injection.mods.storage import ModStorageService
 from utils.core.paths import get_user_data_dir, get_asset_path, get_injection_dir, open_folder_in_explorer
@@ -472,6 +474,7 @@ class MessageHandler:
                 "analyticsEnabled": get_config_bool("General", "analytics_enabled", ANALYTICS_USER_DEFAULT),
                 "autoUpdate": get_config_bool("General", "auto_update", AUTO_UPDATE_USER_DEFAULT),
                 "randomMode": (get_config_option("General", "random_mode", "all") or "all"),
+                "forceUpdate": get_config_bool("General", "force_update", FORCE_UPDATE_USER_DEFAULT),
                 "updateAvailable": bool((getattr(self, "_update_status", None) or {}).get("available")),
                 "updateVersion": (getattr(self, "_update_status", None) or {}).get("remoteVersion"),
                 "relayUrl": (get_config_option("General", "relay_url") or ""),
@@ -2181,6 +2184,10 @@ class MessageHandler:
                     return
                 set_config_option("General", "relay_url", relay_url)
                 log.info(f"[SkinMonitor] Party relay URL set to {relay_url or '(default)'} via settings panel")
+            if "forceUpdate" in payload:
+                force_update = bool(payload.get("forceUpdate"))
+                set_config_option("General", "force_update", "true" if force_update else "false")
+                log.info(f"[SkinMonitor] Automatic update install {'enabled' if force_update else 'disabled'} via settings panel")
             if "autoUpdate" in payload:
                 auto_update = bool(payload.get("autoUpdate"))
                 set_config_option("General", "auto_update", "true" if auto_update else "false")
@@ -2590,10 +2597,38 @@ class MessageHandler:
                             announced = result.get("remoteVersion")
                             self._send_toast(f"Kaleido {announced} available", "info")
                             log.info(f"[Kaleido] Update badge: version {announced} available")
+                        if get_config_bool("General", "force_update", FORCE_UPDATE_USER_DEFAULT):
+                            self._auto_install_when_idle(result.get("remoteVersion"))
                 except Exception as exc:  # noqa: BLE001
                     log.debug(f"[Kaleido] update watch error: {exc}")
 
         threading.Thread(target=worker, name="KaleidoUpdateWatch", daemon=True).start()
+
+    def _phase_is_safe_for_update(self) -> bool:
+        phase = getattr(self.shared_state, "phase", None)
+        return phase not in UNSAFE_UPDATE_PHASES
+
+    def _auto_install_when_idle(self, version: Optional[str], countdown: int = 15) -> None:
+        """Forced updates: wait until the player is not in champ select / a game, warn, then restart to install."""
+        if getattr(self, "_auto_update_version", None) == version:
+            return
+        self._auto_update_version = version
+        log.info(f"[Kaleido] Forced update to {version}: waiting for an idle moment")
+        waited = 0
+        while not self._phase_is_safe_for_update():
+            time.sleep(30)
+            waited += 30
+            if waited % 300 == 0:
+                log.info("[Kaleido] Forced update still waiting (in champ select or in game)")
+        self._send_response(json.dumps({"type": "update-forced", "remoteVersion": version, "seconds": countdown}))
+        self._send_toast(f"Updating to Kaleido {version} in {countdown} s", "info")
+        for _ in range(countdown):
+            time.sleep(1)
+            if not self._phase_is_safe_for_update():
+                log.info("[Kaleido] Forced update postponed: a game started during the countdown")
+                self._auto_update_version = None
+                return
+        self._handle_update_install({})
 
     def _handle_update_check(self, payload: dict) -> None:
         import threading

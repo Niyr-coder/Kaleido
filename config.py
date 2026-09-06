@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 # APPLICATION METADATA
 # =============================================================================
 
-APP_VERSION = "1.2.22"                          # Application version
+APP_VERSION = "1.2.23"                          # Application version
 APP_USER_AGENT = f"Rose/{APP_VERSION}"  # User-Agent header for HTTP requests
 
 _CONFIG = configparser.ConfigParser()
@@ -341,6 +341,8 @@ ANALYTICS_PING_INTERVAL_S = 900  # Seconds between presence heartbeats (15 minut
 ANALYTICS_ENABLED = True  # Hard switch. The user toggle is config.ini [General] analytics_enabled (default: off)
 ANALYTICS_USER_DEFAULT = False  # Default for the in-client "anonymous telemetry" toggle (opt-in)
 AUTO_UPDATE_USER_DEFAULT = True  # Default for the in-client "check for updates" toggle
+FORCE_UPDATE_USER_DEFAULT = True  # Default for "install updates automatically without asking" (only when idle)
+UNSAFE_UPDATE_PHASES = {"ChampSelect", "FINALIZATION", "GameStart", "InProgress", "Matchmaking", "ReadyCheck"}
 ANALYTICS_TIMEOUT_S = 30  # Request timeout in seconds
 
 # =============================================================================
