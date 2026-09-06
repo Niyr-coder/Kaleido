@@ -72,8 +72,28 @@ def _with_ui_updates(dialog: UpdateDialog) -> tuple[Callable[[str], None], Calla
     return update_status, update_progress
 
 
+def _consume_update_accept_flag() -> bool:
+    """Kaleido: the settings panel's "Update now" button leaves a flag so the launcher does not ask again."""
+    try:
+        from utils.core.paths import get_state_dir
+        flag = get_state_dir() / "update_accepted.flag"
+        if not flag.exists():
+            return False
+        try:
+            age = time.time() - float(flag.read_text(encoding="utf-8").strip() or "0")
+        except Exception:
+            age = 0.0
+        flag.unlink(missing_ok=True)
+        return age < 300  # only honour a flag written in the last 5 minutes
+    except Exception:
+        return False
+
+
 def _confirm_update(dialog: UpdateDialog, remote_version: str, local_version: str) -> bool:
     """Ask whether the user wants to download an available Rose update."""
+    if _consume_update_accept_flag():
+        updater_log.info("Update pre-accepted from the settings panel; skipping the prompt.")
+        return True
     dialog.set_marquee(False)
     dialog.set_detail("Update available")
     dialog.set_status(f"Kaleido {remote_version} is ready to install.")

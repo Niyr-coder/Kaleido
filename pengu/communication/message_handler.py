@@ -261,6 +261,10 @@ class MessageHandler:
             self._handle_cycle_recent_skin(payload)
         elif payload_type == "party-copy-skin":
             self._handle_party_copy_skin(payload)
+        elif payload_type == "update-check":
+            self._handle_update_check(payload)
+        elif payload_type == "update-install":
+            self._handle_update_install(payload)
         elif payload_type == "add-custom-mods-category-selected":
             self._handle_add_custom_mods_category_selected(payload)
         elif payload_type == "add-custom-mods-champion-selected":
@@ -2498,6 +2502,70 @@ class MessageHandler:
             return
         target = selection.chroma_id or selection.skin_id
         self._apply_skin_id(int(target), "party")
+
+    # ------------------------------------------------------------------
+    # Kaleido: manual update check + one-click update (restart through the launcher)
+    # ------------------------------------------------------------------
+    def _handle_update_check(self, payload: dict) -> None:
+        import threading
+
+        def worker():
+            from config import APP_VERSION
+            result = {"type": "update-check-result", "localVersion": APP_VERSION, "remoteVersion": None,
+                      "available": False, "url": None, "error": None}
+            try:
+                from launcher.update.github_client import GitHubClient
+                from launcher.update.update_sequence import _parse_semver_like, _cmp_version
+                client = GitHubClient(timeout=10)
+                release = client.get_latest_release()
+                if not release:
+                    result["error"] = "Could not reach GitHub"
+                else:
+                    remote = client.get_release_version(release) or ""
+                    result["remoteVersion"] = remote.lstrip("vV")
+                    result["url"] = release.get("html_url")
+                    cmp = _cmp_version(_parse_semver_like(remote), _parse_semver_like(APP_VERSION))
+                    result["available"] = cmp == 1 and client.get_zip_asset(release) is not None
+            except Exception as exc:  # noqa: BLE001
+                result["error"] = str(exc)
+            log.info(f"[Kaleido] Manual update check: {result}")
+            self._send_response(json.dumps(result))
+
+        threading.Thread(target=worker, name="KaleidoUpdateCheck", daemon=True).start()
+
+    def _handle_update_install(self, payload: dict) -> None:
+        """Restart Kaleido; the launcher applies the update without asking (accept flag)."""
+        import subprocess
+        import sys
+        import threading
+
+        try:
+            from utils.core.paths import get_state_dir
+            flag = get_state_dir() / "update_accepted.flag"
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            flag.write_text(str(int(time.time())), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            self._send_toast(f"Could not prepare the update: {exc}", "error")
+            return
+
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable]
+        else:
+            cmd = [sys.executable, str(Path(sys.argv[0]).resolve())]
+        self._send_toast("Restarting Kaleido to install the update…", "success")
+        log.info(f"[Kaleido] Update install requested; restarting with {cmd}")
+
+        def restart():
+            time.sleep(0.8)
+            try:
+                subprocess.Popen(cmd, cwd=str(Path(cmd[-1]).parent), close_fds=True,
+                                 creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            except Exception as exc:  # noqa: BLE001
+                log.error(f"[Kaleido] Could not relaunch for update: {exc}")
+                return
+            self.shared_state.stop = True
+
+        threading.Thread(target=restart, name="KaleidoUpdateRestart", daemon=True).start()
 
     def _handle_skin_detection(self, payload: dict) -> None:
         """Handle skin detection message"""

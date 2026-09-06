@@ -19,6 +19,8 @@
     "Your friend plays another champion": "Tu amigo juega otro campeón",
     "Invalid friend": "Amigo no válido",
     "Invalid skin id": "Id de skin no válido",
+    "Restarting Kaleido to install the update…": "Reiniciando Kaleido para instalar la actualización…",
+    "Could not prepare the update: {0}": "No se pudo preparar la actualización: {0}",
   };
   function kt(text) {
     let lang = "es";

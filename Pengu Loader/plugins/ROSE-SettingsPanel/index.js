@@ -182,6 +182,14 @@
       "Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin":
         "Atajos en la selección de campeón: Ctrl+← / Ctrl+→ recorre skins recientes · Ctrl+F marca la skin como favorita",
       "Loaded": "Cargado",
+      "Check for updates": "Buscar actualizaciones",
+      "Checking…": "Buscando…",
+      "You are up to date ({version})": "Estás al día ({version})",
+      "Version {version} available": "Versión {version} disponible",
+      "Update now": "Actualizar ahora",
+      "Could not reach GitHub": "No se pudo conectar con GitHub",
+      "Kaleido will restart and install the update.": "Kaleido se reiniciará e instalará la actualización.",
+      "Restarting Kaleido to install the update…": "Reiniciando Kaleido para instalar la actualización…",
     },
   };
   let currentLang = "es";
@@ -2335,6 +2343,52 @@
     autoUpdateWrapper.appendChild(autoUpdateText);
     privacySection.appendChild(autoUpdateWrapper);
 
+    // Manual update check (Kaleido)
+    const updateRow = document.createElement("div");
+    updateRow.className = "kaleido-profiles-row";
+    const checkBtn = document.createElement("button");
+    checkBtn.type = "button";
+    checkBtn.className = "kaleido-btn";
+    checkBtn.id = "kaleido-update-check";
+    checkBtn.textContent = t("Check for updates");
+    checkBtn.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      checkBtn.textContent = t("Checking…");
+      checkBtn.classList.add("disabled");
+      const status = document.getElementById("kaleido-update-status");
+      if (status) status.textContent = "";
+      const installBtn = document.getElementById("kaleido-update-install");
+      if (installBtn) installBtn.hidden = true;
+      if (bridge) bridge.send({ type: "update-check" });
+      setTimeout(() => {
+        if (checkBtn.textContent === t("Checking…")) {
+          checkBtn.textContent = t("Check for updates");
+          checkBtn.classList.remove("disabled");
+        }
+      }, 15000);
+    });
+    updateRow.appendChild(checkBtn);
+    const installBtn = document.createElement("button");
+    installBtn.type = "button";
+    installBtn.className = "kaleido-btn primary";
+    installBtn.id = "kaleido-update-install";
+    installBtn.hidden = true;
+    installBtn.textContent = t("Update now");
+    installBtn.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      installBtn.classList.add("disabled");
+      const status = document.getElementById("kaleido-update-status");
+      if (status) status.textContent = t("Kaleido will restart and install the update.");
+      if (bridge) bridge.send({ type: "update-install" });
+    });
+    updateRow.appendChild(installBtn);
+    privacySection.appendChild(updateRow);
+    const updateStatus = document.createElement("div");
+    updateStatus.id = "kaleido-update-status";
+    updateStatus.className = "kaleido-hint";
+    updateStatus.style.textAlign = "left";
+    privacySection.appendChild(updateStatus);
+
     form.appendChild(privacySection);
 
     // Random skin mode (Kaleido)
@@ -2827,6 +2881,30 @@
     historyState = { entries: Array.isArray(payload.entries) ? payload.entries : [] };
     loadChampionNames().then(() => renderHistorySection());
     renderHistorySection();
+  }
+
+  function handleUpdateCheckResult(payload) {
+    const checkBtn = document.getElementById("kaleido-update-check");
+    const installBtn = document.getElementById("kaleido-update-install");
+    const status = document.getElementById("kaleido-update-status");
+    if (checkBtn) {
+      checkBtn.textContent = t("Check for updates");
+      checkBtn.classList.remove("disabled");
+    }
+    if (!status) return;
+    if (payload.error) {
+      status.textContent = t(payload.error);
+      status.style.color = "#ff8a80";
+      return;
+    }
+    status.style.color = "";
+    if (payload.available) {
+      status.textContent = t("Version {version} available", { version: payload.remoteVersion || "?" });
+      if (installBtn) installBtn.hidden = false;
+    } else {
+      status.textContent = t("You are up to date ({version})", { version: payload.localVersion || "" });
+      if (installBtn) installBtn.hidden = true;
+    }
   }
 
   function handleProfileExportResult(payload) {
@@ -5058,6 +5136,7 @@
       bridge.subscribe("favorites-data", handleFavoritesData);
       bridge.subscribe("history-data", handleHistoryData);
       bridge.subscribe("profile-export-result", handleProfileExportResult);
+      bridge.subscribe("update-check-result", handleUpdateCheckResult);
 
       // On every (re)connect, sync state
       bridge.onReady(() => {

@@ -247,6 +247,11 @@ class UpdateSequence:
                 except Exception:
                     pass
             status_callback("Launcher is already up to date")
+            try:
+                from utils.core.paths import get_state_dir
+                (get_state_dir() / "update_accepted.flag").unlink(missing_ok=True)
+            except Exception:
+                pass
             return False
         
         if dev_mode:
