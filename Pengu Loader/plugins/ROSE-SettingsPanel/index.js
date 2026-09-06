@@ -446,7 +446,21 @@
       border: none !important;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
       margin: 0 !important;
+      /* Kaleido: the panel grew (profiles, favorites, history); scroll inside instead of overflowing the client */
+      max-height: calc(100vh - 140px) !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      scrollbar-width: thin;
+      scrollbar-color: #463714 transparent;
     }
+    #${FLYOUT_ID} lc-flyout-content::-webkit-scrollbar,
+    #${FLYOUT_ID} .lc-flyout-content::-webkit-scrollbar { width: 6px; }
+    #${FLYOUT_ID} lc-flyout-content::-webkit-scrollbar-thumb,
+    #${FLYOUT_ID} .lc-flyout-content::-webkit-scrollbar-thumb { background: #463714; border-radius: 3px; }
+    #${FLYOUT_ID} lc-flyout-content::-webkit-scrollbar-thumb:hover,
+    #${FLYOUT_ID} .lc-flyout-content::-webkit-scrollbar-thumb:hover { background: #c89b3c; }
+    #${FLYOUT_ID} lc-flyout-content::-webkit-scrollbar-track,
+    #${FLYOUT_ID} .lc-flyout-content::-webkit-scrollbar-track { background: transparent; }
     
     #${FLYOUT_ID} .settings-title {
       font-size: 18px;
@@ -2730,6 +2744,18 @@
     flyoutFrame.appendChild(flyoutContent);
     panel.appendChild(flyoutFrame);
 
+    // Kaleido: fit the panel to the viewport below the icon
+    const applyPanelMaxHeight = (rect) => {
+      const available = Math.max(240, Math.floor(window.innerHeight - (rect.bottom + 45) - 16));
+      flyoutContent.style.setProperty("max-height", `${available}px`, "important");
+      flyoutContent.style.setProperty("overflow-y", "auto", "important");
+    };
+    applyPanelMaxHeight(iconRect);
+    window.addEventListener("resize", () => {
+      if (!document.getElementById(PANEL_ID)) return;
+      try { applyPanelMaxHeight((navItem.querySelector(".menu-item-icon") || navItem).getBoundingClientRect()); } catch (e) {}
+    });
+
     // Setup slider interactions after form is added to DOM
     setTimeout(() => {
       setupSliderInteractions("threshold", thresholdSlider, thresholdButton, thresholdFill, thresholdValue, thresholdMin, thresholdMax, (value) => {
@@ -2771,6 +2797,7 @@
       liveFlyout.style.left = `${updatedIconRect.left + updatedIconRect.width / 2
         }px`;
       liveFlyout.style.transform = "translateX(-50%)"; // Center the panel on the icon
+      try { applyPanelMaxHeight(updatedIconRect); } catch (e) {}
     }, 0);
 
     // Request current settings and benchmark data
