@@ -80,7 +80,7 @@ def run_create_installer():
     
     # Verify the installer was created
     installer_dir = ROOT / "installer"
-    installer_files = list(installer_dir.glob("Rose_Setup*.exe"))
+    installer_files = list(installer_dir.glob("*_Setup*.exe"))
     if not installer_files:
         print("\n[ERROR] Installer not found at expected location!")
         return False
@@ -154,7 +154,7 @@ def build_all():
     
     # Get file information
     exe_path = ROOT / "dist/Rose/Rose.exe"
-    installer_files = list((ROOT / "installer").glob("Rose_Setup*.exe"))
+    installer_files = list((ROOT / "installer").glob("*_Setup*.exe"))
     installer_path = installer_files[0] if installer_files else None
     
     exe_size_mb = exe_path.stat().st_size / (1024 * 1024)
