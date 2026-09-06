@@ -40,6 +40,8 @@
     "Custom mod": "Mod personalizado",
     "Chroma": "Chroma",
     "Skin": "Skin",
+    "Failed to connect to relay": "No se pudo conectar al servidor Party. Configura la URL del relay en Ajustes de Kaleido.",
+    "Relay connection failed": "No se pudo conectar al servidor Party. Configura la URL del relay en Ajustes de Kaleido.",
   };
   function kt(text, vars) {
     let lang = "es";
@@ -1065,7 +1067,7 @@
         } else {
           const messageEl = document.getElementById("add-peer-message");
           if (messageEl) {
-            messageEl.innerHTML = `<div class="error-msg">${escapeHtml(data.error || kt("Failed to enable"))}</div>`;
+            messageEl.innerHTML = `<div class="error-msg">${escapeHtml(kt(data.error || "Failed to enable"))}</div>`;
           }
           console.error(`${LOG_PREFIX} Failed to enable:`, data.error);
         }
@@ -1111,7 +1113,7 @@
           }
         } else {
           if (addMessageEl) {
-            addMessageEl.innerHTML = `<div class="error-msg">${escapeHtml(data.error || kt("Failed to connect"))}</div>`;
+            addMessageEl.innerHTML = `<div class="error-msg">${escapeHtml(kt(data.error || "Failed to connect"))}</div>`;
           }
         }
         // Request updated state

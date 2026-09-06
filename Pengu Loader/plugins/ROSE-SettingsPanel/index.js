@@ -182,6 +182,12 @@
       "Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin":
         "Atajos en la selección de campeón: Ctrl+← / Ctrl+→ recorre skins recientes · Ctrl+F marca la skin como favorita",
       "Loaded": "Cargado",
+      "Party relay server:": "Servidor del modo Party (relay):",
+      "Party relay info": "Información del servidor Party",
+      "Party mode needs a small relay server on Cloudflare (the relay-worker folder of the repo). Paste its URL here (wss://... or https://...). Everyone in the party must use the same server. Leave empty to use the one built into this version, if any.":
+        "El modo Party necesita un pequeño servidor relay en Cloudflare (la carpeta relay-worker del repo). Pega aquí su URL (wss://... o https://...). Todos los de la party deben usar el mismo servidor. Déjalo vacío para usar el que trae esta versión, si lo hay.",
+      "No relay server configured. Party mode will not connect.": "No hay servidor relay configurado. El modo Party no podrá conectarse.",
+      "Relay server ready": "Servidor relay listo",
       "Check for updates": "Buscar actualizaciones",
       "Checking…": "Buscando…",
       "You are up to date ({version})": "Estás al día ({version})",
@@ -1428,6 +1434,8 @@
       analyticsEnabled: !!payload.analyticsEnabled,
       autoUpdate: payload.autoUpdate === undefined ? true : !!payload.autoUpdate,
       randomMode: payload.randomMode || "all",
+      relayUrl: payload.relayUrl || "",
+      relayConfigured: !!payload.relayConfigured,
     };
     // Update version badge if the panel is already open
     const badge = document.getElementById("rose-version-badge");
@@ -2459,6 +2467,34 @@
     pathInputWrapper.appendChild(pathStatus);
     pathSection.appendChild(pathInputWrapper);
     form.appendChild(pathSection);
+
+    // Party relay server (Kaleido)
+    const relaySection = document.createElement("div");
+    relaySection.className = "settings-section";
+    const relayLabel = document.createElement("label");
+    relayLabel.className = "settings-label";
+    const relayLabelText = document.createElement("span");
+    relayLabelText.textContent = t("Party relay server:");
+    relayLabel.appendChild(createTooltipButton(
+      t("Party mode needs a small relay server on Cloudflare (the relay-worker folder of the repo). Paste its URL here (wss://... or https://...). Everyone in the party must use the same server. Leave empty to use the one built into this version, if any."),
+      t("Party relay info")
+    ));
+    relayLabel.appendChild(relayLabelText);
+    relaySection.appendChild(relayLabel);
+    const relayInput = document.createElement("input");
+    relayInput.type = "text";
+    relayInput.className = "settings-input";
+    relayInput.id = "relay-url-input";
+    relayInput.placeholder = "wss://kaleido-relay.<cuenta>.workers.dev";
+    relayInput.style.width = "100%";
+    relayInput.style.boxSizing = "border-box";
+    relaySection.appendChild(relayInput);
+    const relayStatus = document.createElement("div");
+    relayStatus.id = "relay-url-status";
+    relayStatus.className = "kaleido-hint";
+    relayStatus.style.textAlign = "left";
+    relaySection.appendChild(relayStatus);
+    form.appendChild(relaySection);
 
     // Add custom mods dropdown
     const modsDropdownContainer = document.createElement("div");
@@ -3730,6 +3766,15 @@
     if (randomModeSelect) {
       randomModeSelect.value = currentSettings.randomMode || "all";
     }
+    const relayInput = document.getElementById("relay-url-input");
+    if (relayInput) {
+      relayInput.value = currentSettings.relayUrl || "";
+      const relayStatus = document.getElementById("relay-url-status");
+      if (relayStatus) {
+        relayStatus.textContent = currentSettings.relayConfigured ? t("Relay server ready") : t("No relay server configured. Party mode will not connect.");
+        relayStatus.style.color = currentSettings.relayConfigured ? "#5b9a32" : "#ff8a80";
+      }
+    }
 
     if (pathInput) {
       pathInput.value = currentSettings.gamePath || "";
@@ -3820,6 +3865,8 @@
     const autoUpdate = autoUpdateCheckbox ? autoUpdateCheckbox.checked : true;
     const randomModeSelect = document.getElementById("random-mode-select");
     const randomMode = randomModeSelect ? randomModeSelect.value : "all";
+    const relayInput = document.getElementById("relay-url-input");
+    const relayUrl = relayInput ? relayInput.value.trim() : "";
 
     // Clamp threshold between 0.30 and 2.0
     const clampedThreshold = Math.max(0.3, Math.min(2.0, threshold));
@@ -3838,6 +3885,7 @@
       analyticsEnabled: analyticsEnabled,
       autoUpdate: autoUpdate,
       randomMode: randomMode,
+      relayUrl: relayUrl,
     });
 
     log("info", "Settings save requested", {
