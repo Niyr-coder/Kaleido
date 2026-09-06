@@ -175,7 +175,6 @@
     return _championNamesPromise;
   }
   const DISCORD_INVITE_URL = "https://discord.gg/bsb8yEAMpE";
-  const KOFI_URL = "https://ko-fi.com/roseapp";
   const GITHUB_URL = "https://github.com/Niyr-coder/Kaleido";
 
   const PANEL_ID = "rose-settings-panel";
@@ -2615,13 +2614,6 @@
     discordLink.target = "_blank";
     discordLink.textContent = "Discord";
     linksSection.appendChild(discordLink);
-
-    const kofiLink = document.createElement("a");
-    kofiLink.className = "settings-link";
-    kofiLink.href = KOFI_URL;
-    kofiLink.target = "_blank";
-    kofiLink.textContent = "Ko-Fi";
-    linksSection.appendChild(kofiLink);
 
     const githubLink = document.createElement("a");
     githubLink.className = "settings-link";

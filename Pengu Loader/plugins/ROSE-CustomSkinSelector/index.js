@@ -1,5 +1,19 @@
 (function createCustomSkinSelector() {
   const LOG_PREFIX = "[ROSE-CustomSkinSelector]";
+  // ---- Kaleido i18n (shared key with ROSE-SettingsPanel) ----
+  const KALEIDO_I18N_ES = {
+    "Base Skin": "Skin base",
+    "Disable custom skin mod": "Desactivar el mod de skin personalizado",
+    "Unknown Skin": "Skin desconocida",
+  };
+  function kt(text, vars) {
+    let lang = "es";
+    try { const v = localStorage.getItem("kaleido-lang"); if (v === "en" || v === "es") lang = v; } catch (e) {}
+    let out = (lang === "es" && Object.prototype.hasOwnProperty.call(KALEIDO_I18N_ES, text)) ? KALEIDO_I18N_ES[text] : text;
+    if (vars) Object.keys(vars).forEach((k) => { out = out.split(`{${k}}`).join(String(vars[k])); });
+    return out;
+  }
+
   const BUTTON_CLASS = "lu-custom-skin-button";
   const BUTTON_SELECTOR = `.${BUTTON_CLASS}`;
   const PANEL_CLASS = "lu-custom-skin-panel";
@@ -197,7 +211,7 @@
     return {
       championId: Number.isFinite(championId) ? championId : null,
       skinId: Number.isFinite(skinId) ? skinId : null,
-      skinName: String(skinMonitorState?.name || "Unknown Skin"),
+      skinName: String(skinMonitorState?.name || kt("Unknown Skin")),
     };
   }
 
@@ -579,8 +593,8 @@
     };
 
     const noneEntry = {
-      id: "__none__", modName: "Base Skin", thumbnailUrl: "",
-      description: "Disable custom skin mod", _none: true,
+      id: "__none__", modName: kt("Base Skin"), thumbnailUrl: "",
+      description: kt("Disable custom skin mod"), _none: true,
     };
 
     const visibleMods = [noneEntry, ...mods];

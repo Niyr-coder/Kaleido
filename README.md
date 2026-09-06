@@ -19,6 +19,24 @@ original sigue aplicando.
 
 > El servidor de telemetría sigue siendo el de Rose (`ANALYTICS_SERVER_URL` en `config.py`) y el updater apunta a las releases de `Niyr-coder/Kaleido`. Cambia el primero cuando Krealos tenga su propio servidor.
 
+## Aviso legal
+
+Kaleido no está afiliado a Riot Games ni respaldado por Riot Games. League of Legends y todas las propiedades
+relacionadas son marcas registradas de Riot Games, Inc.
+
+Kaleido solo modifica archivos de renderizado locales para mostrar modelos y texturas distintos en tu propia
+pantalla. No altera datos de red, memoria del juego ni mecánicas, y **no ofrece ninguna ventaja competitiva**.
+Aun así, el uso de herramientas de terceros con el cliente de League puede infringir los términos de servicio de
+Riot y conllevar sanciones en la cuenta. **Cada usuario lo utiliza bajo su propia responsabilidad.** Krealos no se
+hace responsable de suspensiones, pérdidas de cuenta ni de ningún otro daño derivado de su uso.
+
+Kaleido no distribuye la DLL de inyección ni ningún archivo protegido por derechos de autor de terceros. No la
+solicites ni la compartas en el Discord de Krealos.
+
+Kaleido es un fork de [Rose](https://github.com/Alban1911/Rose) (© Alban and Florent, licencia MIT) y utiliza
+[Pengu Loader](https://github.com/PenguLoader/PenguLoader) (licencia MIT). Los avisos de copyright originales se
+conservan en [LICENSE](LICENSE).
+
 ---
 
 ## Documentación original de Rose
@@ -174,14 +192,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and project structu
 This project is not endorsed by or affiliated with Riot Games. Riot Games and all related properties are trademarks or registered trademarks of Riot Games, Inc.
 
 Custom skins are allowed under Riot's terms of service and are not detected. Do not discuss or advertise skin tools in game. Users proceed at their own risk.
-
-## Support
-
-If you enjoy Rose and want to support its development:
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/roseapp)
-
-Your support helps keep the project alive and motivates continued development!
 
 ---
 

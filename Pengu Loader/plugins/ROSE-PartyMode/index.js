@@ -6,6 +6,44 @@
  */
 (function initPartyMode() {
   const LOG_PREFIX = "[Rose-PartyMode]";
+  // ---- Kaleido i18n (shared key with ROSE-SettingsPanel) ----
+  const KALEIDO_I18N_ES = {
+    "Party Mode": "Modo Party",
+    "Offline": "Desconectado",
+    "Online": "Conectado",
+    "Share your skins with friends in the same lobby. Enable party mode and exchange tokens to connect.": "Comparte tus skins con amigos en el mismo lobby. Activa el modo Party e intercambien tokens para conectarse.",
+    "Enable Party Mode": "Activar modo Party",
+    "Disable Party Mode": "Desactivar modo Party",
+    "Your Party Token": "Tu token de Party",
+    "Generating...": "Generando...",
+    "Copy": "Copiar",
+    "Copied!": "¡Copiado!",
+    "Add Friend": "Añadir amigo",
+    "Paste friend's token here...": "Pega aquí el token de tu amigo...",
+    "Add": "Añadir",
+    "Connected Friends": "Amigos conectados",
+    "No friends connected yet": "Aún no hay amigos conectados",
+    "Waiting for your friend": "Esperando a tu amigo",
+    "In lobby": "En el lobby",
+    "Connected": "Conectado",
+    "Handshaking": "Negociando conexión",
+    "Connecting": "Conectando",
+    "Disconnected": "Desconectado",
+    "Friend": "Amigo",
+    "Remove": "Quitar",
+    "Please enter a token": "Introduce un token",
+    "Failed to enable": "No se pudo activar",
+    "Friend connected!": "¡Amigo conectado!",
+    "Failed to connect": "No se pudo conectar",
+  };
+  function kt(text, vars) {
+    let lang = "es";
+    try { const v = localStorage.getItem("kaleido-lang"); if (v === "en" || v === "es") lang = v; } catch (e) {}
+    let out = (lang === "es" && Object.prototype.hasOwnProperty.call(KALEIDO_I18N_ES, text)) ? KALEIDO_I18N_ES[text] : text;
+    if (vars) Object.keys(vars).forEach((k) => { out = out.split(`{${k}}`).join(String(vars[k])); });
+    return out;
+  }
+
   let BRIDGE_PORT = 50000;
   let BRIDGE_URL = `ws://127.0.0.1:${BRIDGE_PORT}`;
   const BRIDGE_PORT_STORAGE_KEY = "rose_bridge_port";
@@ -628,7 +666,7 @@
       e.stopPropagation();
       togglePanel();
     });
-    attachTooltip(button, "Party Mode");
+    attachTooltip(button, kt("Party Mode"));
 
     // Insert before the add friend button, or append to the end
     if (friendFinderParent) {
@@ -679,39 +717,39 @@
     panel.id = PANEL_ID;
     panel.innerHTML = `
       <div class="party-header">
-        <h3>Party Mode</h3>
-        <span class="party-status offline">Offline</span>
+        <h3>${kt("Party Mode")}</h3>
+        <span class="party-status offline">${kt("Offline")}</span>
       </div>
       <div class="party-content">
-        <div class="party-description">Share your skins with friends in the same lobby. Enable party mode and exchange tokens to connect.</div>
+        <div class="party-description">${kt("Share your skins with friends in the same lobby. Enable party mode and exchange tokens to connect.")}</div>
 
         <div class="party-section" id="party-toggle-section">
           <button class="party-toggle-btn enable" id="party-toggle-btn">
-            Enable Party Mode
+            ${kt("Enable Party Mode")}
           </button>
         </div>
 
         <div class="party-section" id="party-token-section" style="display: none;">
-          <div class="party-section-title">Your Party Token</div>
+          <div class="party-section-title">${kt("Your Party Token")}</div>
           <div class="token-container">
-            <input type="text" class="token-input" id="party-token-display" readonly placeholder="Generating...">
-            <button class="copy-btn" id="copy-token-btn">Copy</button>
+            <input type="text" class="token-input" id="party-token-display" readonly placeholder="${kt("Generating...")}">
+            <button class="copy-btn" id="copy-token-btn">${kt("Copy")}</button>
           </div>
         </div>
 
         <div class="party-section" id="party-add-section" style="display: none;">
-          <div class="party-section-title">Add Friend</div>
+          <div class="party-section-title">${kt("Add Friend")}</div>
           <div class="add-peer-container">
-            <input type="text" class="add-peer-input" id="add-peer-input" placeholder="Paste friend's token here...">
-            <button class="add-btn" id="add-peer-btn">Add</button>
+            <input type="text" class="add-peer-input" id="add-peer-input" placeholder="${kt("Paste friend's token here...")}">
+            <button class="add-btn" id="add-peer-btn">${kt("Add")}</button>
           </div>
           <div id="add-peer-message"></div>
         </div>
 
         <div class="party-section" id="party-peers-section" style="display: none;">
-          <div class="party-section-title">Connected Friends (<span id="peer-count">0</span>)</div>
+          <div class="party-section-title">${kt("Connected Friends")} (<span id="peer-count">0</span>)</div>
           <div class="peers-list" id="peers-list">
-            <div class="no-peers">No friends connected yet</div>
+            <div class="no-peers">${kt("No friends connected yet")}</div>
           </div>
         </div>
       </div>
@@ -769,10 +807,10 @@
 
     if (partyState.enabled) {
       statusEl.className = "party-status online";
-      statusEl.textContent = "Online";
+      statusEl.textContent = kt("Online");
 
       toggleBtn.className = "party-toggle-btn disable";
-      toggleBtn.textContent = "Disable Party Mode";
+      toggleBtn.textContent = kt("Disable Party Mode");
 
       tokenSection.style.display = "block";
       addSection.style.display = "block";
@@ -788,22 +826,22 @@
       peerCountEl.textContent = connectedPeers.length;
 
       if (allPeers.length === 0) {
-        peersList.innerHTML = '<div class="no-peers">No friends connected yet</div>';
+        peersList.innerHTML = `<div class="no-peers">${kt("No friends connected yet")}</div>`;
       } else {
         peersList.innerHTML = allPeers
           .map((peer) => {
             const cs = (peer.connection_state || "disconnected").toLowerCase();
             const isWaiting = cs === "connecting" || cs === "handshaking";
             const statusText = isWaiting
-              ? "Waiting for your friend"
+              ? kt("Waiting for your friend")
               : cs === "connected"
-                ? (peer.in_lobby ? "In lobby" : "Connected")
+                ? (peer.in_lobby ? kt("In lobby") : kt("Connected"))
                 : cs === "handshaking"
-                  ? "Handshaking"
+                  ? kt("Handshaking")
                   : cs === "connecting"
-                    ? "Connecting"
-                    : "Disconnected";
-            const displayName = isWaiting ? "Friend" : escapeHtml(peer.summoner_name);
+                    ? kt("Connecting")
+                    : kt("Disconnected");
+            const displayName = isWaiting ? kt("Friend") : escapeHtml(peer.summoner_name);
             const lobbyStatus = peer.in_lobby ? "in-lobby" : "";
             const skinInfo = peer.skin_selection
               ? `Skin: ${peer.skin_selection.skin_id}`
@@ -817,7 +855,7 @@
                 ${escapeHtml(statusText)}</span>
                 ${skinInfo ? `<span class="peer-skin">${skinInfo}</span>` : ""}
               </div>
-              <button class="peer-remove" title="Remove" onclick="window.rosePartyRemovePeer(${peer.summoner_id})">
+              <button class="peer-remove" title="${kt("Remove")}" onclick="window.rosePartyRemovePeer(${peer.summoner_id})">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                 </svg>
@@ -829,10 +867,10 @@
       }
     } else {
       statusEl.className = "party-status offline";
-      statusEl.textContent = "Offline";
+      statusEl.textContent = kt("Offline");
 
       toggleBtn.className = "party-toggle-btn enable";
-      toggleBtn.textContent = "Enable Party Mode";
+      toggleBtn.textContent = kt("Enable Party Mode");
 
       tokenSection.style.display = "none";
       addSection.style.display = "none";
@@ -865,10 +903,10 @@
     if (!tokenDisplay.value) return;
 
     navigator.clipboard.writeText(tokenDisplay.value).then(() => {
-      copyBtn.textContent = "Copied!";
+      copyBtn.textContent = kt("Copied!");
       copyBtn.classList.add("copied");
       setTimeout(() => {
-        copyBtn.textContent = "Copy";
+        copyBtn.textContent = kt("Copy");
         copyBtn.classList.remove("copied");
       }, 2000);
     });
@@ -883,7 +921,7 @@
 
     if (!token) {
       messageEl.innerHTML =
-        '<div class="error-msg">Please enter a token</div>';
+        `<div class="error-msg">${kt("Please enter a token")}</div>`;
       return;
     }
 
@@ -933,7 +971,7 @@
         } else {
           const messageEl = document.getElementById("add-peer-message");
           if (messageEl) {
-            messageEl.innerHTML = `<div class="error-msg">${escapeHtml(data.error || "Failed to enable")}</div>`;
+            messageEl.innerHTML = `<div class="error-msg">${escapeHtml(data.error || kt("Failed to enable"))}</div>`;
           }
           console.error(`${LOG_PREFIX} Failed to enable:`, data.error);
         }
@@ -972,14 +1010,14 @@
         if (data.success) {
           if (addMessageEl) {
             addMessageEl.innerHTML =
-              '<div class="success-msg">Friend connected!</div>';
+              `<div class="success-msg">${kt("Friend connected!")}</div>`;
             setTimeout(() => {
               addMessageEl.innerHTML = "";
             }, 3000);
           }
         } else {
           if (addMessageEl) {
-            addMessageEl.innerHTML = `<div class="error-msg">${escapeHtml(data.error || "Failed to connect")}</div>`;
+            addMessageEl.innerHTML = `<div class="error-msg">${escapeHtml(data.error || kt("Failed to connect"))}</div>`;
           }
         }
         // Request updated state
