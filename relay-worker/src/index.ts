@@ -10,7 +10,7 @@ export default {
 
     // Health check
     if (url.pathname === '/' && request.method === 'GET') {
-      return new Response(JSON.stringify({ status: 'ok', service: 'rose-party-relay' }), {
+      return new Response(JSON.stringify({ status: 'ok', service: 'kaleido-party-relay' }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }

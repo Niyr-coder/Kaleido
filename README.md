@@ -30,6 +30,15 @@ original sigue aplicando.
 
 > El servidor de telemetría sigue siendo el de Rose (`ANALYTICS_SERVER_URL` en `config.py`) y el updater apunta a las releases de `Niyr-coder/Kaleido`. Cambia el primero cuando Krealos tenga su propio servidor.
 
+## Servidor del modo Party (relay)
+
+El modo Party intercambia las skins entre amigos a través de un Worker de Cloudflare (carpeta `relay-worker/`).
+Kaleido trae de serie `wss://kaleido-party-relay.krealos.workers.dev`, desplegado en la cuenta de Krealos, y todos
+los miembros de la party deben usar el mismo servidor. Se puede cambiar desde el panel de ajustes ("Servidor del
+modo Party") o en `config.ini` con `relay_url`. Para desplegar uno propio: `cd relay-worker && npx wrangler login &&
+npx wrangler deploy`, y opcionalmente guardar la URL como secreto `KALEIDO_RELAY_URL` del repo para que el build la
+incluya.
+
 ## Compilar e instalar
 
 El repositorio incluye un workflow de GitHub Actions ([build.yml](.github/workflows/build.yml)) que compila Pengu Loader,

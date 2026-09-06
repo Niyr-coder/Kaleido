@@ -28,7 +28,7 @@ except ImportError:
 #   2. config.ini  [General] relay_url   (editable from the settings panel)
 #   3. party/network/relay_config.py    (written by CI from the KALEIDO_RELAY_URL secret)
 #   4. DEFAULT_RELAY_URL below
-DEFAULT_RELAY_URL = ""
+DEFAULT_RELAY_URL = "wss://kaleido-party-relay.krealos.workers.dev"
 
 
 def get_relay_url() -> str:
