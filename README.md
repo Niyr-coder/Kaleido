@@ -32,7 +32,7 @@ original sigue aplicando.
 - **Temática compartida.** Botón "Igualar tema" junto a cada amigo (o Ctrl+T en la selección): si él juega Guardiana Estelar y tu campeón tiene una, se te aplica. Cuando un amigo elige una skin temática que tu campeón también tiene, aparece un aviso.
 - **Color de party.** Un color para todos: cada uno pulsa "Aplicar color" y Kaleido elige el chroma de su skin más parecido a ese color.
 - **Retos de skin.** "Retar" abre las skins del campeón de tu amigo; él recibe un aviso y la acepta con un clic.
-- **Panel Party en la selección de campeón.** Como el cliente esconde la barra social ahí, aparece un botón flotante "Party" abajo a la derecha, y Ctrl+P abre o cierra el panel en cualquier pantalla.
+- **Panel Party en la selección de campeón.** Como el cliente esconde la barra social ahí, Ctrl+P abre o cierra el panel en cualquier pantalla.
 - **Ruleta de grupo.** Todos giran una skin aleatoria a la vez, o todos intentan la misma línea de skins con la ruleta temática.
 - **Ver la skin de cada amigo en el modo Party.** Cada amigo conectado muestra su campeón, la miniatura de la skin, el nombre y el chroma (o el mod personalizado). Además, en partida el modo Party inyecta las skins de tus amigos para que las veas en el juego.
 - **Copiar la skin de un amigo en el modo Party.** Si un amigo de la party ya eligió skin para el mismo campeón, un botón la aplica en tu selección.

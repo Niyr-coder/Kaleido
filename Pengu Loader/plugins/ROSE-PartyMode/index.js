@@ -582,10 +582,6 @@
     .peer-skin-icon { width:14px; height:14px; border-radius:50%; border:1px solid #463714; }
     .peer-skin-name { font-family: var(--font-body), Arial, sans-serif; font-size:11px; color:#c89b3c; line-height:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:190px; }
     .peer-skin-none { display:block; margin-top:2px; font-size:10px; color:#5b5a56; line-height:14px; }
-    #kaleido-party-fab { position:fixed; right:18px; bottom:96px; z-index:9997; display:flex; align-items:center; gap:6px; padding:6px 12px; background:#010a13; border:1px solid #463714; color:#cdbe91; font-family: var(--font-body), Arial, sans-serif; font-size:12px; letter-spacing:0.04em; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,0.6); }
-    #kaleido-party-fab:hover { border-color:#8b5cf6; color:#f0e6d2; }
-    #kaleido-party-fab.active { border-color:#8b5cf6; box-shadow:0 0 0 1px rgba(139,92,246,0.4), 0 4px 14px rgba(0,0,0,0.6); }
-    #kaleido-party-fab .party-mode-icon { width:16px; height:16px; }
     .peer-actions { display:flex; flex-wrap:wrap; gap:4px; margin-right:4px; max-width:150px; justify-content:flex-end; }
     .peer-actions .peer-copy { margin-right:0; }
     .peer-copy.danger { border-color:#7a2a2a; color:#ff8a80; }
@@ -1518,26 +1514,6 @@
   // See GitHub issue #22.
   let gamePhaseMonitorId = null;
 
-  function ensureChampSelectButton(inChampSelect) {
-    let fab = document.getElementById("kaleido-party-fab");
-    if (!inChampSelect) {
-      if (fab) fab.remove();
-      return;
-    }
-    if (fab && fab.isConnected) {
-      fab.classList.toggle("active", !!partyState.enabled);
-      return;
-    }
-    fab = document.createElement("button");
-    fab.id = "kaleido-party-fab";
-    fab.type = "button";
-    fab.title = kt("Party Mode") + " (Ctrl+P)";
-    fab.innerHTML = `<span class="party-mode-icon"></span><span class="kaleido-party-fab-label">${kt("Party")}</span>`;
-    fab.classList.toggle("active", !!partyState.enabled);
-    fab.addEventListener("click", (e) => { e.stopPropagation(); togglePanel(); });
-    document.body.appendChild(fab);
-  }
-
   // Ctrl+P (sent by the Kaleido hotkeys plugin) toggles the panel anywhere
   window.addEventListener("kaleido-toggle-party", () => { try { togglePanel(); } catch (e) {} });
 
@@ -1566,9 +1542,6 @@
           updatePanelState();
         }
       }
-
-      // Kaleido: the social bar (and its Party button) is hidden in champion select -> floating button
-      ensureChampSelectButton(inChampSelect);
 
       // Track UI mode changes
       if (inChampSelect && currentUIMode !== "champselect") {
