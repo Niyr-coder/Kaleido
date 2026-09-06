@@ -49,8 +49,14 @@ jobs:
         run: |
           $exe = "dist/Rose/Rose.exe"
           if (-not (Test-Path $exe)) { throw "Packaged executable not found" }
-          if (-not (Test-Path "dist/Rose/Pengu Loader/Pengu Loader.exe")) { throw "Pengu Loader.exe missing from bundle" }
-          if (-not (Test-Path "dist/Rose/_internal/Pengu Loader/plugins/ROSE-KaleidoHotkeys/index.js") -and -not (Test-Path "dist/Rose/Pengu Loader/plugins/ROSE-KaleidoHotkeys/index.js")) { throw "Kaleido plugin missing from bundle" }
+          $pengu = Get-ChildItem -Path "dist/Rose" -Recurse -Filter "Pengu Loader.exe" | Select-Object -First 1
+          if (-not $pengu) { throw "Pengu Loader.exe missing from bundle" }
+          "Pengu Loader: $($pengu.FullName)"
+          $plugin = Get-ChildItem -Path "dist/Rose" -Recurse -Filter "index.js" | Where-Object { $_.FullName -like "*ROSE-KaleidoHotkeys*" } | Select-Object -First 1
+          if (-not $plugin) { throw "Kaleido plugin missing from bundle" }
+          "Plugin: $($plugin.FullName)"
+          $tools = Get-ChildItem -Path "dist/Rose" -Recurse -Filter "mod-tools.exe" | Select-Object -First 1
+          if (-not $tools) { throw "mod-tools.exe missing from bundle" }
           Get-ChildItem installer/*.exe | ForEach-Object { "Installer: $($_.Name) $([math]::Round($_.Length/1MB,1)) MB" }
 
       - name: Zip the portable build
