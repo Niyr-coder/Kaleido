@@ -41,6 +41,46 @@
     "Chroma": "Chroma",
     "Skin": "Skin",
     "Failed to connect to relay": "No se pudo conectar al servidor Party. Configura la URL del relay en Ajustes de Kaleido.",
+    "Friend group": "Grupo de amigos",
+    "No group yet. Create one and share its code, or paste a friend's code.": "Aún no hay grupo. Crea uno y comparte su código, o pega el código de un amigo.",
+    "Group name": "Nombre del grupo",
+    "Create group": "Crear grupo",
+    "Paste a group code (KGRP1:...)": "Pega un código de grupo (KGRP1:...)",
+    "Join": "Unirse",
+    "Copy code": "Copiar código",
+    "Leave group": "Salir del grupo",
+    "Join automatically when Kaleido starts": "Unirse automáticamente al abrir Kaleido",
+    "In the group room": "Conectado al grupo",
+    "Not connected to the group": "Sin conexión con el grupo",
+    "Enable Party Mode to see who is online.": "Activa el modo Party para ver quién está en línea.",
+    "Group code copied": "Código del grupo copiado",
+    "Online": "En línea",
+    "Invite to lobby": "Invitar al lobby",
+    "Invitation sent": "Invitación enviada",
+    "Create a lobby first": "Crea un lobby primero",
+    "Match theme": "Igualar tema",
+    "Challenge": "Retar",
+    "Pick a skin for {name}": "Elige una skin para {name}",
+    "Wait until {name} picks a champion": "Espera a que {name} elija campeón",
+    "Party color": "Color de party",
+    "Apply color": "Aplicar color",
+    "No color": "Sin color",
+    "Roulette": "Ruleta",
+    "Themed roulette": "Ruleta temática",
+    "Everyone spins a random skin (themed: everyone tries the same skin line).": "Todos giran una skin aleatoria (temática: todos intentan la misma línea de skins).",
+    "{name} wants you to play with {skin}": "{name} quiere que juegues con {skin}",
+    "Accept": "Aceptar",
+    "Ignore": "Ignorar",
+    "Loading skins…": "Cargando skins…",
+    "red": "rojo", "blue": "azul", "green": "verde", "yellow": "amarillo", "purple": "morado",
+    "pink": "rosa", "orange": "naranja", "white": "blanco", "black": "negro",
+    "Invalid group code": "Código de grupo no válido",
+    "A group with that name already exists": "Ya existe un grupo con ese nombre",
+    "Invalid group name": "Nombre de grupo no válido",
+    "Group not found": "Grupo no encontrado",
+    "Group removed": "Grupo eliminado",
+    "Auto-join updated": "Preferencia guardada",
+    "Group deactivated": "Grupo desactivado",
     "Relay connection failed": "No se pudo conectar al servidor Party. Configura la URL del relay en Ajustes de Kaleido.",
   };
   function kt(text, vars) {
@@ -541,6 +581,34 @@
     .peer-skin-icon { width:14px; height:14px; border-radius:50%; border:1px solid #463714; }
     .peer-skin-name { font-family: var(--font-body), Arial, sans-serif; font-size:11px; color:#c89b3c; line-height:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:190px; }
     .peer-skin-none { display:block; margin-top:2px; font-size:10px; color:#5b5a56; line-height:14px; }
+    .peer-actions { display:flex; flex-wrap:wrap; gap:4px; margin-right:4px; max-width:150px; justify-content:flex-end; }
+    .peer-actions .peer-copy { margin-right:0; }
+    .peer-copy.danger { border-color:#7a2a2a; color:#ff8a80; }
+    .peer-copy:disabled { opacity:0.4; cursor:default; }
+    .party-hint { font-family: var(--font-body), Arial, sans-serif; font-size:10px; color:#7e6f4e; line-height:14px; margin:4px 0 6px; }
+    .party-inline-msg { font-family: var(--font-body), Arial, sans-serif; font-size:11px; margin-top:6px; }
+    .party-inline-msg.success { color:#5b9a32; }
+    .party-inline-msg.error { color:#ff8a80; }
+    .party-inline-msg.info { color:#c8aa6e; }
+    .party-group-name { color:#f0e6d2; }
+    .party-group-status { display:block; font-family: var(--font-body), Arial, sans-serif; font-size:10px; color:#a09b8c; margin:2px 0 6px; }
+    .party-group-status.ok { color:#5b9a32; }
+    .party-group-status.bad { color:#ff8a80; }
+    .party-group-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+    .party-check { display:flex; align-items:center; gap:6px; margin-top:8px; font-family: var(--font-body), Arial, sans-serif; font-size:11px; color:#a09b8c; cursor:pointer; }
+    .party-color-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:4px; }
+    .party-color-chip { width:20px; height:20px; border-radius:50%; border:2px solid #463714; cursor:pointer; padding:0; }
+    .party-color-chip.active { border-color:#f0e6d2; box-shadow:0 0 0 2px #8b5cf6; }
+    .party-color-chip.none { background:#1e2328; color:#a09b8c; font-size:12px; line-height:16px; }
+    .party-challenge { border:1px solid #8b5cf6; background:rgba(139,92,246,0.10); padding:8px; }
+    .party-challenge-text { font-family: var(--font-body), Arial, sans-serif; font-size:12px; color:#f0e6d2; margin-bottom:6px; }
+    .party-picker { border:1px solid #463714; background:#010a13; padding:8px; margin-top:8px; max-height:260px; overflow-y:auto; }
+    .party-picker-head { display:flex; justify-content:space-between; align-items:center; font-family: var(--font-body), Arial, sans-serif; font-size:12px; color:#f0e6d2; margin-bottom:6px; }
+    .party-picker-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+    .party-picker-skin { background:#1e2328; border:1px solid #463714; padding:4px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .party-picker-skin:hover { border-color:#8b5cf6; }
+    .party-picker-skin img { width:100%; aspect-ratio:1; object-fit:cover; }
+    .party-picker-skin span { font-family: var(--font-body), Arial, sans-serif; font-size:9px; color:#cdbe91; text-align:center; line-height:11px; max-height:22px; overflow:hidden; }
 
     .peer-copy { background:#1e2328; border:1px solid #463714; color:#cdbe91; font-family:'Beaufort for LOL', serif; font-size:10px; padding:2px 8px; cursor:pointer; margin-right:6px; }
       .peer-copy:hover { border-color:#8b5cf6; color:#f0e6d2; }
@@ -814,11 +882,16 @@
       <div class="party-content">
         <div class="party-description">${kt("Share your skins with friends in the same lobby. Enable party mode and exchange tokens to connect.")}</div>
 
+        <div class="party-section" id="party-group-section"></div>
+
         <div class="party-section" id="party-toggle-section">
           <button class="party-toggle-btn enable" id="party-toggle-btn">
             ${kt("Enable Party Mode")}
           </button>
         </div>
+
+        <div class="party-section" id="party-challenge-section" style="display: none;"></div>
+        <div class="party-section" id="party-social-section" style="display: none;"></div>
 
         <div class="party-section" id="party-token-section" style="display: none;">
           <div class="party-section-title">${kt("Your Party Token")}</div>
@@ -843,6 +916,7 @@
             <div class="no-peers">${kt("No friends connected yet")}</div>
           </div>
         </div>
+        <div id="party-picker-overlay" class="party-picker" style="display: none;"></div>
       </div>
       <button class="party-close-btn" id="party-close-btn"></button>
     `;
@@ -884,8 +958,171 @@
     updateLobbyButtonState();
   }
 
+  // ---------------------------------------------------------------------
+  // Kaleido: groups, invites, theme, color, challenges, roulette
+  // ---------------------------------------------------------------------
+  let _groupMessage = { text: "", kind: "info", ts: 0 };
+  let _pickerState = null;
+
+  function copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+    } catch (e) {}
+    return Promise.resolve(false);
+  }
+
+  function setGroupMessage(text, kind) {
+    _groupMessage = { text: text || "", kind: kind || "info", ts: Date.now() };
+    renderGroupSection();
+    if (text) setTimeout(() => { if (Date.now() - _groupMessage.ts >= 3900) { _groupMessage.text = ""; renderGroupSection(); } }, 4000);
+  }
+
+  function renderGroupSection() {
+    const el = document.getElementById("party-group-section");
+    if (!el) return;
+    const g = partyState.group || { active: null, auto: true, groups: [], code: null, joined: false, relay: false };
+    const msg = _groupMessage.text ? `<div class="party-inline-msg ${_groupMessage.kind}">${escapeHtml(_groupMessage.text)}</div>` : "";
+    if (!g.active) {
+      el.innerHTML = `
+        <div class="party-section-title">${kt("Friend group")}</div>
+        <div class="party-hint">${kt("No group yet. Create one and share its code, or paste a friend's code.")}</div>
+        <div class="add-peer-container">
+          <input type="text" class="add-peer-input" id="party-group-name" maxlength="24" placeholder="${kt("Group name")}">
+          <button class="add-btn" onclick="window.kaleidoParty.createGroup()">${kt("Create group")}</button>
+        </div>
+        <div class="add-peer-container" style="margin-top:6px;">
+          <input type="text" class="add-peer-input" id="party-group-code-input" placeholder="${kt("Paste a group code (KGRP1:...)")}">
+          <button class="add-btn" onclick="window.kaleidoParty.joinGroup()">${kt("Join")}</button>
+        </div>
+        ${msg}`;
+      return;
+    }
+    const status = partyState.enabled
+      ? (g.joined && g.relay ? `<span class="party-group-status ok">${kt("In the group room")}</span>` : `<span class="party-group-status bad">${kt("Not connected to the group")}</span>`)
+      : `<span class="party-group-status">${kt("Enable Party Mode to see who is online.")}</span>`;
+    el.innerHTML = `
+      <div class="party-section-title">${kt("Friend group")}: <span class="party-group-name">${escapeHtml(g.active)}</span></div>
+      ${status}
+      <div class="party-group-actions">
+        <button class="peer-copy" onclick="window.kaleidoParty.copyGroupCode()">${kt("Copy code")}</button>
+        <button class="peer-copy danger" onclick="window.kaleidoParty.leaveGroup()">${kt("Leave group")}</button>
+      </div>
+      <label class="party-check"><input type="checkbox" ${g.auto ? "checked" : ""} onchange="window.kaleidoParty.setAuto(this.checked)"> ${kt("Join automatically when Kaleido starts")}</label>
+      ${msg}`;
+  }
+
+  function colorLabel(name) { return kt(name); }
+
+  function renderSocialSection() {
+    const el = document.getElementById("party-social-section");
+    if (!el) return;
+    if (!partyState.enabled) { el.style.display = "none"; return; }
+    el.style.display = "block";
+    const colors = partyState.colors || {};
+    const current = partyState.room && partyState.room.color && partyState.room.color.value ? partyState.room.color.value : null;
+    const chips = Object.keys(colors).map((name) => {
+      const active = current && current.name === name ? " active" : "";
+      return `<button class="party-color-chip${active}" title="${escapeHtml(colorLabel(name))}" style="background:${colors[name]}" onclick="window.kaleidoParty.setColor('${name}')"></button>`;
+    }).join("");
+    el.innerHTML = `
+      <div class="party-section-title">${kt("Party color")}${current ? `: <span style="color:${current.hex}">${escapeHtml(colorLabel(current.name))}</span>` : ""}</div>
+      <div class="party-color-row">
+        ${chips}
+        <button class="party-color-chip none" title="${kt("No color")}" onclick="window.kaleidoParty.setColor(null)">×</button>
+        <button class="peer-copy" onclick="window.kaleidoParty.applyColor()" ${current ? "" : "disabled"}>${kt("Apply color")}</button>
+      </div>
+      <div class="party-section-title" style="margin-top:8px;">${kt("Roulette")}</div>
+      <div class="party-hint">${kt("Everyone spins a random skin (themed: everyone tries the same skin line).")}</div>
+      <div class="party-group-actions">
+        <button class="peer-copy" onclick="window.kaleidoParty.roulette('all')">🎲 ${kt("Roulette")}</button>
+        <button class="peer-copy" onclick="window.kaleidoParty.roulette('theme')">🎲 ${kt("Themed roulette")}</button>
+      </div>`;
+  }
+
+  function renderChallengeCard() {
+    const el = document.getElementById("party-challenge-section");
+    if (!el) return;
+    const c = partyState.pending_challenge;
+    if (!partyState.enabled || !c) { el.style.display = "none"; el.innerHTML = ""; return; }
+    el.style.display = "block";
+    el.innerHTML = `
+      <div class="party-challenge">
+        <div class="party-challenge-text">${escapeHtml(kt("{name} wants you to play with {skin}").replace("{name}", c.from_name || "?").replace("{skin}", c.skin_name || ("#" + c.skin_id)))}</div>
+        <div class="party-group-actions">
+          <button class="add-btn" onclick="window.kaleidoParty.respondChallenge(true)">${kt("Accept")}</button>
+          <button class="peer-copy" onclick="window.kaleidoParty.respondChallenge(false)">${kt("Ignore")}</button>
+        </div>
+      </div>`;
+  }
+
+  async function openChallengePicker(summonerId, championId, name) {
+    const overlay = document.getElementById("party-picker-overlay");
+    if (!overlay) return;
+    if (!championId) {
+      setGroupMessage(kt("Wait until {name} picks a champion").replace("{name}", name || "?"), "info");
+      return;
+    }
+    _pickerState = { summonerId, championId };
+    overlay.style.display = "block";
+    overlay.innerHTML = `<div class="party-picker-head"><span>${escapeHtml(kt("Pick a skin for {name}").replace("{name}", name || "?"))}</span><button class="peer-remove" onclick="window.kaleidoParty.closePicker()">×</button></div><div class="party-hint">${kt("Loading skins…")}</div>`;
+    const data = await getChampionData(championId);
+    if (!_pickerState || _pickerState.summonerId !== summonerId) return;
+    const skins = (data && Array.isArray(data.skins) ? data.skins : []).filter((k) => Number(k.id) % 1000 !== 0);
+    const cards = skins.map((k) => `
+      <button class="party-picker-skin" onclick="window.kaleidoParty.pickSkin(${summonerId}, ${Number(k.id)})" title="${escapeHtml(k.name || "")}">
+        <img src="/lol-game-data/assets/v1/champion-tiles/${championId}/${Number(k.id)}.jpg" alt="" onerror="this.style.visibility='hidden'">
+        <span>${escapeHtml(k.name || ("#" + k.id))}</span>
+      </button>`).join("");
+    overlay.innerHTML = `<div class="party-picker-head"><span>${escapeHtml(kt("Pick a skin for {name}").replace("{name}", name || "?"))}</span><button class="peer-remove" onclick="window.kaleidoParty.closePicker()">×</button></div><div class="party-picker-grid">${cards}</div>`;
+  }
+
+  window.kaleidoParty = {
+    createGroup() {
+      const input = document.getElementById("party-group-name");
+      const name = input ? input.value.trim() : "";
+      if (!name) { if (input) input.focus(); return; }
+      sendBridgeMessage({ type: "party-group-create", name });
+    },
+    joinGroup() {
+      const input = document.getElementById("party-group-code-input");
+      const code = input ? input.value.trim() : "";
+      if (!code) { if (input) input.focus(); return; }
+      sendBridgeMessage({ type: "party-group-join", code });
+    },
+    leaveGroup() { sendBridgeMessage({ type: "party-group-leave" }); },
+    copyGroupCode() { sendBridgeMessage({ type: "party-group-code" }); },
+    setAuto(enabled) { sendBridgeMessage({ type: "party-group-auto", enabled: !!enabled }); },
+    async invite(summonerId) {
+      try {
+        const r = await fetch("/lol-lobby/v2/lobby/invitations", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify([{ toSummonerId: Number(summonerId) }]),
+        });
+        setGroupMessage(r.ok ? kt("Invitation sent") : kt("Create a lobby first"), r.ok ? "success" : "error");
+      } catch (e) {
+        setGroupMessage(kt("Create a lobby first"), "error");
+      }
+    },
+    matchTheme(summonerId) { sendBridgeMessage({ type: "party-match-theme", summonerId: Number(summonerId) }); },
+    challenge(summonerId, championId, name) { openChallengePicker(Number(summonerId), Number(championId), name); },
+    pickSkin(summonerId, skinId) {
+      sendBridgeMessage({ type: "party-challenge", summonerId: Number(summonerId), skinId: Number(skinId) });
+      window.kaleidoParty.closePicker();
+    },
+    closePicker() {
+      _pickerState = null;
+      const overlay = document.getElementById("party-picker-overlay");
+      if (overlay) { overlay.style.display = "none"; overlay.innerHTML = ""; }
+    },
+    setColor(name) { sendBridgeMessage({ type: "party-set-color", color: name || null }); },
+    applyColor() { sendBridgeMessage({ type: "party-apply-color" }); },
+    roulette(mode) { sendBridgeMessage({ type: "party-roulette", mode: mode || "all" }); },
+    respondChallenge(accept) { sendBridgeMessage({ type: "party-challenge-respond", accept: !!accept }); },
+  };
+
   function updatePanelState() {
     if (!partyPanel) return;
+    renderGroupSection();
 
     const statusEl = partyPanel.querySelector(".party-status");
     const toggleBtn = document.getElementById("party-toggle-btn");
@@ -926,7 +1163,7 @@
             const statusText = isWaiting
               ? kt("Waiting for your friend")
               : cs === "connected"
-                ? (peer.in_lobby ? kt("In lobby") : kt("Connected"))
+                ? (peer.in_lobby ? kt("In lobby") : (partyState.group_name ? kt("Online") : kt("Connected")))
                 : cs === "handshaking"
                   ? kt("Handshaking")
                   : cs === "connecting"
@@ -946,7 +1183,12 @@
                 ${escapeHtml(statusText)}</span>
                 ${skinInfo}
               </div>
-              ${peer.skin_selection ? `<button class="peer-copy" onclick="window.kaleidoPartyCopySkin(${peer.summoner_id})">${kt("Copy skin")}</button>` : ""}
+              <div class="peer-actions">
+                ${peer.skin_selection ? `<button class="peer-copy" onclick="window.kaleidoPartyCopySkin(${peer.summoner_id})">${kt("Copy skin")}</button>` : ""}
+                ${peer.skin_selection ? `<button class="peer-copy" onclick="window.kaleidoParty.matchTheme(${peer.summoner_id})">${kt("Match theme")}</button>` : ""}
+                ${cs === "connected" ? `<button class="peer-copy" onclick="window.kaleidoParty.challenge(${peer.summoner_id}, ${peer.skin_selection ? Number(peer.skin_selection.champion_id) || 0 : 0}, '${escapeHtml(peer.summoner_name).replace(/'/g, "")}')">${kt("Challenge")}</button>` : ""}
+                ${cs === "connected" && !peer.in_lobby ? `<button class="peer-copy" onclick="window.kaleidoParty.invite(${peer.summoner_id})">${kt("Invite to lobby")}</button>` : ""}
+              </div>
               <button class="peer-remove" title="${kt("Remove")}" onclick="window.rosePartyRemovePeer(${peer.summoner_id})">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -958,7 +1200,18 @@
           .join("");
         hydratePeerSkinCards(allPeers);
       }
+      // In group mode the session token is irrelevant: hide the token/add-friend blocks
+      if (partyState.group_name) {
+        tokenSection.style.display = "none";
+        addSection.style.display = "none";
+      }
+      renderSocialSection();
+      renderChallengeCard();
     } else {
+      const social = document.getElementById("party-social-section");
+      if (social) social.style.display = "none";
+      const chal = document.getElementById("party-challenge-section");
+      if (chal) chal.style.display = "none";
       statusEl.className = "party-status offline";
       statusEl.textContent = kt("Offline");
 
@@ -1051,9 +1304,27 @@
           my_summoner_id: data.my_summoner_id || null,
           my_summoner_name: data.my_summoner_name || "Unknown",
           peers: data.peers || [],
+          group_name: data.group_name || null,
+          room: data.room || {},
+          pending_challenge: data.pending_challenge || null,
+          group: data.group || partyState.group || null,
+          colors: data.colors || partyState.colors || null,
         };
         updateButtonState();
         updatePanelState();
+        break;
+
+      case "party-group-result":
+        setGroupMessage(kt(String(data.message || "")), data.success ? "success" : "error");
+        sendBridgeMessage({ type: "party-get-state" });
+        break;
+
+      case "party-group-code":
+        if (data.success && data.code) {
+          copyText(data.code).then((ok) => setGroupMessage(ok ? kt("Group code copied") : data.code, ok ? "success" : "info"));
+        } else {
+          setGroupMessage(kt("Group not found"), "error");
+        }
         break;
 
       case "party-enabled":

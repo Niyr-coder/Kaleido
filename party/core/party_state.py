@@ -39,6 +39,12 @@ class PartyState:
     # Skin selections from peers (champion_id -> skin_data)
     party_skins: Dict[int, dict] = field(default_factory=dict)
 
+    # Kaleido social state
+    group_name: Optional[str] = None          # permanent friend group joined (None = session token room)
+    room: dict = field(default_factory=dict)  # shared room state from the relay (color, theme, ...)
+    pending_challenge: Optional[dict] = None  # {from_id, from_name, skin_id, skin_name, champion_id, ts}
+    last_event: Optional[dict] = None         # last social event for the UI (roulette, challenge_result...)
+
     # Thread safety
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -137,6 +143,10 @@ class PartyState:
             self.my_token = None
             self.peers.clear()
             self.party_skins.clear()
+            self.group_name = None
+            self.room = {}
+            self.pending_challenge = None
+            self.last_event = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for UI broadcast"""
@@ -146,6 +156,10 @@ class PartyState:
                 "my_token": self.my_token,
                 "my_summoner_id": self.my_summoner_id,
                 "my_summoner_name": self.my_summoner_name,
+                "group_name": self.group_name,
+                "room": self.room,
+                "pending_challenge": self.pending_challenge,
+                "last_event": self.last_event,
                 "peers": [
                     {
                         "summoner_id": p.summoner_id,

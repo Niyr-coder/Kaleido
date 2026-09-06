@@ -49,6 +49,12 @@ RELAY_URL = get_relay_url()  # kept for callers that import the constant
 PING_INTERVAL = 25.0
 
 
+def compute_group_room_key(group_key_hex: str) -> str:
+    """Room key for a permanent friend group (Kaleido)."""
+    from party.core.friends import room_key_for
+    return room_key_for(group_key_hex)
+
+
 def compute_room_key(host_summoner_id: int, host_key: bytes) -> str:
     """Derive a room key from the host's token."""
     raw = str(host_summoner_id).encode() + host_key
@@ -71,6 +77,8 @@ class PartyRelay:
 
         # Current state: list of members with their skin picks
         self.members: List[dict] = []
+        self.room_state: dict = {}
+        self._on_event = None
 
         # Callbacks
         self._on_members_changed: Optional[Callable[[List[dict]], None]] = None
@@ -126,6 +134,21 @@ class PartyRelay:
             "skin": skin,
         })
 
+    # ---- Kaleido social extensions -------------------------------------------------
+    async def send_event(self, event: str, data: Optional[dict] = None, to: Optional[int] = None):
+        """Relay a social event (challenge, roulette, ...) to the other members (or to one)."""
+        payload = {"type": "event", "event": str(event), "data": data or {}}
+        if to is not None:
+            payload["to"] = int(to)
+        await self._send_json(payload)
+
+    async def send_room_set(self, key: str, value):
+        """Set shared room state (party color, theme...). None clears it."""
+        await self._send_json({"type": "room_set", "key": str(key), "value": value})
+
+    def set_on_event(self, callback: Callable[[dict], None]):
+        self._on_event = callback
+
     async def disconnect(self):
         """Leave the room."""
         self._connected = False
@@ -172,12 +195,21 @@ class PartyRelay:
 
                     if msg.get("type") == "members":
                         self.members = msg.get("members", [])
+                        room = msg.get("room")
+                        self.room_state = room if isinstance(room, dict) else {}
                         log.info(f"[RELAY] Members updated: {len(self.members)} in room")
                         if self._on_members_changed:
                             try:
                                 self._on_members_changed(self.members)
                             except Exception as e:
                                 log.debug(f"[RELAY] Callback error: {e}")
+                    elif msg.get("type") == "event":
+                        cb = getattr(self, "_on_event", None)
+                        if cb:
+                            try:
+                                cb(msg)
+                            except Exception as e:
+                                log.debug(f"[RELAY] Event callback error: {e}")
         except ConnectionClosed:
             log.info("[RELAY] Connection closed")
             self._connected = False

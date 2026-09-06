@@ -265,6 +265,12 @@ class MessageHandler:
             self._handle_update_check(payload)
         elif payload_type == "update-install":
             self._handle_update_install(payload)
+        elif payload_type in ("party-group-create", "party-group-join", "party-group-leave",
+                              "party-group-auto", "party-group-code", "party-group-select"):
+            self._handle_party_group(payload_type, payload)
+        elif payload_type in ("party-match-theme", "party-set-color", "party-apply-color",
+                              "party-challenge", "party-challenge-respond", "party-roulette"):
+            self._handle_party_social(payload_type, payload)
         elif payload_type == "add-custom-mods-category-selected":
             self._handle_add_custom_mods_category_selected(payload)
         elif payload_type == "add-custom-mods-champion-selected":
@@ -2581,6 +2587,209 @@ class MessageHandler:
 
         threading.Thread(target=restart, name="KaleidoUpdateRestart", daemon=True).start()
 
+    # ------------------------------------------------------------------
+    # Kaleido: party manager factory with social hooks
+    # ------------------------------------------------------------------
+    def _ensure_party_manager(self):
+        party_manager = getattr(self.shared_state, "party_manager", None)
+        if party_manager:
+            self._ensure_social(party_manager)
+            return party_manager
+        from party.core.party_manager import PartyManager
+        lcu = self.skin_scraper.lcu if self.skin_scraper else None
+        if not lcu:
+            return None
+        party_manager = PartyManager(lcu, self.shared_state, self.injection_manager)
+        self.shared_state.party_manager = party_manager
+        party_manager.set_callbacks(on_state_change=lambda state: self.broadcaster.broadcast_party_state())
+        self._ensure_social(party_manager)
+        return party_manager
+
+    def _ensure_social(self, party_manager):
+        social = getattr(self, "_social", None)
+        if social is None:
+            import asyncio
+            from party.core.social import PartySocial
+
+            def schedule(coro):
+                if self.websocket_server and self.websocket_server.loop:
+                    asyncio.run_coroutine_threadsafe(coro, self.websocket_server.loop)
+                else:
+                    try:
+                        coro.close()
+                    except Exception:
+                        pass
+
+            def run_dice() -> bool:
+                try:
+                    from ui.core.user_interface import get_user_interface
+                    ui = get_user_interface(self.shared_state, self.skin_scraper)
+                    if getattr(self.shared_state, "random_mode_active", False):
+                        ui._handle_dice_click_enabled()
+                    ui._handle_dice_click_disabled()
+                    return True
+                except Exception as exc:  # noqa: BLE001
+                    log.debug(f"[SOCIAL] dice failed: {exc}")
+                    return False
+
+            social = PartySocial(
+                shared_state=self.shared_state,
+                skin_scraper=self.skin_scraper,
+                get_party_manager=lambda: getattr(self.shared_state, "party_manager", None),
+                apply_skin=self._apply_skin_id,
+                run_dice=run_dice,
+                send_toast=self._send_toast,
+                broadcast_state=lambda: self.broadcaster.broadcast_party_state(),
+                schedule=schedule,
+                skin_name=self._skin_display_name,
+            )
+            self._social = social
+        if getattr(party_manager, "_on_event", None) is None:
+            party_manager.set_social_hooks(
+                on_event=social.on_event,
+                on_peer_skin=social.on_peer_skin,
+                on_room_changed=social.on_room_changed,
+            )
+        return social
+
+    def _party_group_ui_state(self) -> dict:
+        try:
+            from party.core import friends
+            data = friends.get_settings()
+            pm = getattr(self.shared_state, "party_manager", None)
+            return {
+                "active": data["active"],
+                "auto": data["auto_join"],
+                "groups": [g["name"] for g in data["groups"]],
+                "code": friends.group_code() if data["active"] else None,
+                "joined": bool(pm and pm.enabled and pm.party_state.group_name == data["active"] and data["active"]),
+                "relay": bool(pm and pm.relay_connected),
+            }
+        except Exception as exc:  # noqa: BLE001
+            log.debug(f"[PARTY] group ui state failed: {exc}")
+            return {"active": None, "auto": True, "groups": [], "code": None, "joined": False, "relay": False}
+
+    def _maybe_auto_join_group(self) -> None:
+        """Called when the client asks for the party state: join the active group automatically."""
+        try:
+            from party.core import friends
+            if not friends.auto_join_enabled():
+                return
+            group = friends.active_group()
+            if not group:
+                return
+            pm = self._ensure_party_manager()
+            if not pm or pm.enabled:
+                return
+            if getattr(self, "_auto_join_started", False):
+                return
+            self._auto_join_started = True
+            import asyncio
+
+            async def do_join():
+                try:
+                    await pm.enable(group)
+                    self.shared_state.party_mode_enabled = True
+                    self.shared_state.party_token = pm.my_token_str
+                    log.info(f"[PARTY] Auto-joined group '{group['name']}'")
+                    self.broadcaster.broadcast_party_state()
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(f"[PARTY] Auto-join failed: {exc}")
+                finally:
+                    self._auto_join_started = False
+
+            if self.websocket_server and self.websocket_server.loop:
+                asyncio.run_coroutine_threadsafe(do_join(), self.websocket_server.loop)
+        except Exception as exc:  # noqa: BLE001
+            log.debug(f"[PARTY] auto-join check failed: {exc}")
+
+    def _reconnect_party_to_group(self, group: Optional[dict]) -> None:
+        """Re-enable party mode in the given group room (or a session room when None)."""
+        pm = self._ensure_party_manager()
+        if not pm:
+            return
+        import asyncio
+
+        async def do_reconnect():
+            try:
+                if pm.enabled:
+                    await pm.disable()
+                await pm.enable(group)
+                self.shared_state.party_mode_enabled = True
+                self.shared_state.party_token = pm.my_token_str
+            except Exception as exc:  # noqa: BLE001
+                log.warning(f"[PARTY] reconnect failed: {exc}")
+            self.broadcaster.broadcast_party_state()
+
+        if self.websocket_server and self.websocket_server.loop:
+            asyncio.run_coroutine_threadsafe(do_reconnect(), self.websocket_server.loop)
+
+    def _handle_party_group(self, action: str, payload: dict) -> None:
+        from party.core import friends
+        ok, message = False, ""
+        reconnect = False
+        try:
+            if action == "party-group-create":
+                ok, message = friends.create_group(str(payload.get("name") or ""))
+                reconnect = ok
+            elif action == "party-group-join":
+                ok, message = friends.join_group(str(payload.get("code") or ""))
+                reconnect = ok
+            elif action == "party-group-select":
+                ok, message = friends.set_active(payload.get("name"))
+                reconnect = ok
+            elif action == "party-group-leave":
+                pm = getattr(self.shared_state, "party_manager", None)
+                name = str(payload.get("name") or (friends.active_group() or {}).get("name") or "")
+                ok, message = friends.leave_group(name)
+                if ok and pm and pm.enabled and pm.party_state.group_name == name:
+                    import asyncio
+                    if self.websocket_server and self.websocket_server.loop:
+                        asyncio.run_coroutine_threadsafe(pm.disable(), self.websocket_server.loop)
+            elif action == "party-group-auto":
+                ok = friends.set_auto_join(bool(payload.get("enabled", True)))
+                message = "Auto-join updated"
+            elif action == "party-group-code":
+                code = friends.group_code(payload.get("name"))
+                ok, message = (True, code) if code else (False, "No active group")
+                self._send_response(json.dumps({"type": "party-group-code", "success": ok, "code": code}))
+                return
+        except Exception as exc:  # noqa: BLE001
+            ok, message = False, str(exc)
+        log.info(f"[PARTY] {action}: ok={ok} {message}")
+        self._send_response(json.dumps({"type": "party-group-result", "action": action, "success": ok, "message": message}))
+        if reconnect:
+            self._reconnect_party_to_group(friends.active_group())
+        else:
+            self.broadcaster.broadcast_party_state()
+
+    def _handle_party_social(self, action: str, payload: dict) -> None:
+        pm = self._ensure_party_manager()
+        social = self._ensure_social(pm) if pm else None
+        if not social:
+            self._send_toast("Party mode not enabled", "error")
+            return
+        ok, message = False, "Unknown action"
+        try:
+            if action == "party-match-theme":
+                ok, message = social.match_theme(payload.get("summonerId"))
+            elif action == "party-set-color":
+                ok, message = social.set_color(payload.get("color"))
+            elif action == "party-apply-color":
+                ok, message = social.apply_color()
+            elif action == "party-challenge":
+                ok, message = social.challenge(int(payload.get("summonerId")), int(payload.get("skinId")))
+            elif action == "party-challenge-respond":
+                ok, message = social.respond_challenge(bool(payload.get("accept")))
+            elif action == "party-roulette":
+                ok, message = social.roulette(str(payload.get("mode") or "all"))
+        except Exception as exc:  # noqa: BLE001
+            ok, message = False, str(exc)
+        log.info(f"[SOCIAL] {action}: ok={ok} {message}")
+        if action in ("party-match-theme", "party-apply-color", "party-challenge", "party-roulette") or not ok:
+            self._send_toast(message, "success" if ok else "error")
+        self._send_response(json.dumps({"type": "party-action-result", "action": action, "success": ok, "message": message}))
+
     def _handle_skin_detection(self, payload: dict) -> None:
         """Handle skin detection message"""
         skin_name = payload.get("skin")
@@ -3079,35 +3288,31 @@ class MessageHandler:
     def _handle_party_enable(self, payload: dict) -> None:
         """Handle party mode enable request"""
         try:
-            party_manager = getattr(self.shared_state, 'party_manager', None)
+            party_manager = self._ensure_party_manager()
             if not party_manager:
-                # Initialize party manager
-                from party.core.party_manager import PartyManager
-                from lcu import LCU
+                response_payload = {
+                    "type": "party-enabled",
+                    "success": False,
+                    "error": "LCU not available - is League client running?",
+                }
+                self._send_response(json.dumps(response_payload))
+                return
 
-                # Get LCU instance from skin_scraper
-                lcu = self.skin_scraper.lcu if self.skin_scraper else None
-                if not lcu:
-                    response_payload = {
-                        "type": "party-enabled",
-                        "success": False,
-                        "error": "LCU not available - is League client running?",
-                    }
-                    self._send_response(json.dumps(response_payload))
-                    return
-
-                party_manager = PartyManager(lcu, self.shared_state, self.injection_manager)
-                self.shared_state.party_manager = party_manager
-                party_manager.set_callbacks(
-                    on_state_change=lambda state: self.broadcaster.broadcast_party_state()
-                )
+            # Kaleido: join the active permanent group room unless the panel asks for a session room
+            group = None
+            if payload.get("useGroup", True):
+                try:
+                    from party.core import friends
+                    group = friends.active_group()
+                except Exception:
+                    group = None
 
             # Enable party mode (async operation)
             import asyncio
 
             async def do_enable():
                 try:
-                    token = await party_manager.enable()
+                    token = await party_manager.enable(group)
                     self.shared_state.party_mode_enabled = True
                     self.shared_state.party_token = token
                     response_payload = {
@@ -3269,6 +3474,7 @@ class MessageHandler:
     def _handle_party_get_state(self, payload: dict) -> None:
         """Handle get party state request"""
         try:
+            self._maybe_auto_join_group()
             party_manager = getattr(self.shared_state, 'party_manager', None)
             if not party_manager:
                 response_payload = {
@@ -3285,6 +3491,12 @@ class MessageHandler:
                     **state_dict,
                     "timestamp": int(time.time() * 1000),
                 }
+            response_payload["group"] = self._party_group_ui_state()
+            try:
+                from party.core.social import PARTY_COLORS
+                response_payload["colors"] = PARTY_COLORS
+            except Exception:
+                pass
 
             self._send_response(json.dumps(response_payload))
 

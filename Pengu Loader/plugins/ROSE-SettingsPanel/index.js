@@ -179,8 +179,8 @@
       "Loss": "Derrota",
       "Remake": "Remake",
       "Pending": "Pendiente",
-      "Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin":
-        "Atajos en la selección de campeón: Ctrl+← / Ctrl+→ recorre skins recientes · Ctrl+F marca la skin como favorita",
+      "Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme":
+        "Atajos en la selección de campeón: Ctrl+← / Ctrl+→ recorre skins recientes · Ctrl+F marca la skin como favorita · Ctrl+T iguala la temática de un amigo de la party",
       "Loaded": "Cargado",
       "Party relay server:": "Servidor del modo Party (relay):",
       "Party relay info": "Información del servidor Party",
@@ -2434,7 +2434,7 @@
 
     const hotkeysHint = document.createElement("div");
     hotkeysHint.className = "kaleido-hint";
-    hotkeysHint.textContent = t("Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin");
+    hotkeysHint.textContent = t("Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme");
     form.appendChild(hotkeysHint);
 
     // Game path section

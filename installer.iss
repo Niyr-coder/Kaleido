@@ -2,8 +2,8 @@
 ; This creates a proper Windows installer that registers the app
 
 #define MyAppName "Kaleido"
-#define MyAppVersion "1.2.19"
-#define MyAppVersionInfo "1.2.19.0"
+#define MyAppVersion "1.2.20"
+#define MyAppVersionInfo "1.2.20.0"
 #define MyAppPublisher "Krealos"
 #define MyAppURL "https://github.com/Niyr-coder/Kaleido"
 #define MyAppExeName "Rose.exe"

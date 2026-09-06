@@ -21,6 +21,11 @@ original sigue aplicando.
 - **Skins recientes con atajos.** Ctrl+← y Ctrl+→ en la selección de campeón recorren las últimas skins usadas con ese campeón.
 - **Historial de partidas.** Cada skin inyectada queda registrada con modo de juego, perfil y resultado (victoria, derrota o remake) cuando el cliente lo informa. Se ve en el panel y se puede limpiar.
 - **Exportar e importar perfiles.** Un código `KPROF1:...` que se copia al portapapeles y que un amigo pega en su panel.
+- **Grupo de amigos permanente.** Crea un grupo en el panel Party, comparte su código una vez y Kaleido se une solo al abrirse. Ves quién está en línea, con un botón para invitarle al lobby. Ya no hacen falta tokens por sesión.
+- **Temática compartida.** Botón "Igualar tema" junto a cada amigo (o Ctrl+T en la selección): si él juega Guardiana Estelar y tu campeón tiene una, se te aplica. Cuando un amigo elige una skin temática que tu campeón también tiene, aparece un aviso.
+- **Color de party.** Un color para todos: cada uno pulsa "Aplicar color" y Kaleido elige el chroma de su skin más parecido a ese color.
+- **Retos de skin.** "Retar" abre las skins del campeón de tu amigo; él recibe un aviso y la acepta con un clic.
+- **Ruleta de grupo.** Todos giran una skin aleatoria a la vez, o todos intentan la misma línea de skins con la ruleta temática.
 - **Ver la skin de cada amigo en el modo Party.** Cada amigo conectado muestra su campeón, la miniatura de la skin, el nombre y el chroma (o el mod personalizado). Además, en partida el modo Party inyecta las skins de tus amigos para que las veas en el juego.
 - **Copiar la skin de un amigo en el modo Party.** Si un amigo de la party ya eligió skin para el mismo campeón, un botón la aplica en tu selección.
 - **Estado en la bandeja.** El menú del icono muestra el perfil activo, la última skin inyectada con su resultado y cuántas skins hay descargadas.
@@ -33,7 +38,7 @@ original sigue aplicando.
 ## Servidor del modo Party (relay)
 
 El modo Party intercambia las skins entre amigos a través de un Worker de Cloudflare (carpeta `relay-worker/`).
-Kaleido trae de serie `wss://kaleido-party-relay.krealos.workers.dev`, desplegado en la cuenta de Krealos, y todos
+El Worker reenvía la lista de miembros, eventos sociales (retos, ruleta) y el estado compartido de la sala (color). Kaleido trae de serie `wss://kaleido-party-relay.krealos.workers.dev`, desplegado en la cuenta de Krealos, y todos
 los miembros de la party deben usar el mismo servidor. Se puede cambiar desde el panel de ajustes ("Servidor del
 modo Party") o en `config.ini` con `relay_url`. Para desplegar uno propio: `cd relay-worker && npx wrangler login &&
 npx wrangler deploy`, y opcionalmente guardar la URL como secreto `KALEIDO_RELAY_URL` del repo para que el build la

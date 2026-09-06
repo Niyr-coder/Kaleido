@@ -350,6 +350,23 @@ class Broadcaster:
             len(payload.get("peers", [])),
         )
 
+        # Kaleido: permanent group info + palette for the Party panel
+        try:
+            from party.core import friends
+            from party.core.social import PARTY_COLORS
+            data = friends.get_settings()
+            pm = party_manager
+            payload["group"] = {
+                "active": data["active"],
+                "auto": data["auto_join"],
+                "groups": [g["name"] for g in data["groups"]],
+                "code": friends.group_code() if data["active"] else None,
+                "joined": bool(pm and pm.enabled and pm.party_state.group_name == data["active"] and data["active"]),
+                "relay": bool(pm and pm.relay_connected),
+            }
+            payload["colors"] = PARTY_COLORS
+        except Exception as exc:  # noqa: BLE001
+            log.debug(f"[PARTY] group info in broadcast failed: {exc}")
         self._send_message(json.dumps(payload))
 
     def _send_message(self, message: str) -> None:

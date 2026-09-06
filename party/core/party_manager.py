@@ -55,6 +55,11 @@ class PartyManager:
         self._on_state_change: Optional[Callable[[PartyState], None]] = None
         self._on_peer_update: Optional[Callable[[int, dict], None]] = None
 
+        # Kaleido social hooks (set by the message handler)
+        self._on_event: Optional[Callable[[dict], None]] = None            # relay event received
+        self._on_peer_skin: Optional[Callable[[int, str, SkinSelection], None]] = None
+        self._on_room_changed: Optional[Callable[[dict, dict], None]] = None
+
     @property
     def enabled(self) -> bool:
         return self.party_state.enabled
@@ -71,8 +76,12 @@ class PartyManager:
         self._on_state_change = on_state_change
         self._on_peer_update = on_peer_update
 
-    async def enable(self) -> str:
-        """Enable party mode: generate token and connect to relay room."""
+    async def enable(self, group: Optional[dict] = None) -> str:
+        """Enable party mode: generate token and connect to relay room.
+
+        Kaleido: with `group` ({"name", "key"}) the room is the permanent group room instead of
+        a fresh session room, so everyone holding the group code meets there automatically.
+        """
         if self.party_state.enabled:
             return self.party_state.my_token or ""
 
@@ -102,10 +111,17 @@ class PartyManager:
             self.party_state.my_token = token_str
             self.party_state.enabled = True
 
-            # Connect to relay room
-            room_key = compute_room_key(my_summoner_id, self._my_key)
+            # Connect to relay room (session room, or the permanent group room)
+            if group and group.get("key"):
+                from party.network.ws_relay import compute_group_room_key
+                room_key = compute_group_room_key(group["key"])
+                self.party_state.group_name = group.get("name")
+            else:
+                room_key = compute_room_key(my_summoner_id, self._my_key)
+                self.party_state.group_name = None
             self._relay = PartyRelay(room_key)
             self._relay.set_on_members_changed(self._on_relay_members_changed)
+            self._relay.set_on_event(self._on_relay_event)
 
             if await self._relay.connect():
                 await self._relay.join(my_summoner_id, my_summoner_name)
@@ -187,6 +203,8 @@ class PartyManager:
 
             self._relay = PartyRelay(target_room_key)
             self._relay.set_on_members_changed(self._on_relay_members_changed)
+            self._relay.set_on_event(self._on_relay_event)
+            self.party_state.group_name = None
 
             if not await self._relay.connect():
                 return False, "Failed to connect to relay"
@@ -261,6 +279,40 @@ class PartyManager:
     def get_state_dict(self) -> dict:
         return self.party_state.to_dict()
 
+    # ─── Kaleido social API ──────────────────────────────────────────────
+
+    def set_social_hooks(self, on_event=None, on_peer_skin=None, on_room_changed=None):
+        self._on_event = on_event
+        self._on_peer_skin = on_peer_skin
+        self._on_room_changed = on_room_changed
+
+    @property
+    def relay_connected(self) -> bool:
+        return bool(self._relay and self._relay.connected)
+
+    async def send_event(self, event: str, data: Optional[dict] = None, to: Optional[int] = None) -> bool:
+        if not self.relay_connected:
+            return False
+        await self._relay.send_event(event, data, to)
+        return True
+
+    async def set_room_value(self, key: str, value) -> bool:
+        if not self.relay_connected:
+            return False
+        await self._relay.send_room_set(key, value)
+        return True
+
+    def _on_relay_event(self, msg: dict):
+        """Relay 'event' message: keep the last one for the UI and hand it to the social handler."""
+        try:
+            self.party_state.last_event = {
+                "event": msg.get("event"), "data": msg.get("data"), "from": msg.get("from"), "ts": msg.get("ts"),
+            }
+        except Exception:
+            pass
+        if self._on_event:
+            self._on_event(msg)
+
     # ─── Relay callbacks ─────────────────────────────────────────────────
 
     def _on_relay_members_changed(self, members: list):
@@ -300,10 +352,32 @@ class PartyManager:
                         skin_id=skin.get("skin_id", 0),
                         chroma_id=skin.get("chroma_id"),
                     )
+                    previous = self.party_state.peers[sid].skin_selection if sid in self.party_state.peers else None
                     self.party_state.update_peer_skin(sid, sel)
                     self._skin_collector.update_from_peer(sel)
+                    changed = (previous is None or previous.skin_id != sel.skin_id
+                               or previous.chroma_id != sel.chroma_id or previous.champion_id != sel.champion_id)
+                    if changed and self._on_peer_skin:
+                        try:
+                            self._on_peer_skin(sid, name, sel)
+                        except Exception as e:
+                            log.debug(f"[PARTY] peer skin hook error: {e}")
                 except Exception as e:
                     log.debug(f"[PARTY] Failed to update peer skin: {e}")
+
+        # Kaleido: shared room state (party color...) travels with the member list
+        try:
+            new_room = dict(getattr(self._relay, "room_state", {}) or {})
+            if new_room != self.party_state.room:
+                old_room = self.party_state.room
+                self.party_state.room = new_room
+                if self._on_room_changed:
+                    try:
+                        self._on_room_changed(old_room, new_room)
+                    except Exception as e:
+                        log.debug(f"[PARTY] room hook error: {e}")
+        except Exception:
+            pass
 
         # Remove peers that are no longer in the room
         stale = [sid for sid in self.party_state.peers if sid not in current_peer_ids]

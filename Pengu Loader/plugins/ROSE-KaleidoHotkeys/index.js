@@ -21,6 +21,20 @@
     "Invalid skin id": "Id de skin no válido",
     "Restarting Kaleido to install the update…": "Reiniciando Kaleido para instalar la actualización…",
     "Could not prepare the update: {0}": "No se pudo preparar la actualización: {0}",
+    "Party mode not enabled": "El modo Party no está activado",
+    "No matching theme for your champion": "Tu campeón no tiene skin de esa temática",
+    "No party color set": "No hay color de party",
+    "The base skin has no chromas": "La skin base no tiene chromas",
+    "This skin has no chromas": "Esta skin no tiene chromas",
+    "Unknown color": "Color desconocido",
+    "Friend not connected": "Ese amigo no está conectado",
+    "No pending challenge": "No hay ningún reto pendiente",
+    "Challenge ignored": "Reto ignorado",
+    "Your friend picked a skin of another champion": "Tu amigo eligió una skin de otro campeón",
+    "Your champion has no themed skins": "Tu campeón no tiene skins temáticas",
+    "Party color cleared": "Color de party quitado",
+    "color": "color", "red": "rojo", "blue": "azul", "green": "verde", "yellow": "amarillo", "purple": "morado",
+    "pink": "rosa", "orange": "naranja", "white": "blanco", "black": "negro",
   };
   function kt(text) {
     let lang = "es";
@@ -113,6 +127,9 @@
     } else if ((e.key === "f" || e.key === "F") && !e.shiftKey) {
       bridge.send({ type: "favorite-toggle" });
       handled = true;
+    } else if ((e.key === "t" || e.key === "T") && !e.shiftKey) {
+      bridge.send({ type: "party-match-theme" });
+      handled = true;
     }
     if (handled) {
       e.preventDefault();
@@ -132,10 +149,13 @@
     });
     bridge.subscribe("kaleido-toast", (payload) => {
       if (!payload || !payload.text) return;
-      showToast(kt(String(payload.text)), payload.kind || "info");
+      let text = String(payload.text);
+      const colorMatch = text.match(/^(.*): color ([a-z]+)$/);
+      if (colorMatch) text = `${colorMatch[1]}: ${kt("color")} ${kt(colorMatch[2])}`;
+      showToast(kt(text), payload.kind || "info");
     });
     document.addEventListener("keydown", onKeyDown, true);
-    log("info", "hotkeys ready (Ctrl+Left/Right recent skins, Ctrl+F favorite)");
+    log("info", "hotkeys ready (Ctrl+Left/Right recent skins, Ctrl+F favorite, Ctrl+T match party theme)");
   }
 
   if (typeof document === "undefined") return;
