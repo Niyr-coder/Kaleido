@@ -259,6 +259,170 @@ def remove_entry(champion_id: int) -> tuple[bool, str]:
         return True, "Entry removed"
 
 
+# ---------------------------------------------------------------------------
+# Automatic profile rules (by game mode / by assigned role)
+# ---------------------------------------------------------------------------
+MODE_KEYS = ("CLASSIC", "ARAM", "URF", "ARENA", "SWIFTPLAY", "OTHER")
+ROLE_KEYS = ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY")
+
+
+def normalize_game_mode(game_mode: Optional[str], queue_id: Optional[int] = None) -> str:
+    gm = (game_mode or "").upper()
+    if queue_id == 480 or gm in ("SWIFTPLAY", "SWIFT_PLAY"):
+        return "SWIFTPLAY"
+    if gm in ("CLASSIC", "ARAM", "URF", "ARENA"):
+        return gm
+    if gm in ("CHERRY",):
+        return "ARENA"
+    if gm in ("ARURF",):
+        return "URF"
+    return "OTHER" if gm else "CLASSIC"
+
+
+def normalize_role(position: Optional[str]) -> Optional[str]:
+    pos = (position or "").upper()
+    aliases = {"TOP": "TOP", "JUNGLE": "JUNGLE", "MIDDLE": "MIDDLE", "MID": "MIDDLE",
+               "BOTTOM": "BOTTOM", "BOT": "BOTTOM", "ADC": "BOTTOM", "UTILITY": "UTILITY", "SUPPORT": "UTILITY"}
+    return aliases.get(pos)
+
+
+def get_auto_rules() -> dict:
+    with _lock:
+        data = _load()
+        rules = data.get("autoRules") if isinstance(data.get("autoRules"), dict) else {}
+        by_mode = {k: v for k, v in (rules.get("byMode") or {}).items() if isinstance(v, str)}
+        by_role = {k: v for k, v in (rules.get("byRole") or {}).items() if isinstance(v, str)}
+        return {"byMode": by_mode, "byRole": by_role}
+
+
+def set_auto_rule(kind: str, key: str, profile: Optional[str]) -> tuple[bool, str]:
+    with _lock:
+        data = _load()
+        bucket = "byMode" if kind == "mode" else "byRole" if kind == "role" else None
+        if bucket is None:
+            return False, "Invalid rule kind"
+        key = str(key or "").upper()
+        if (bucket == "byMode" and key not in MODE_KEYS) or (bucket == "byRole" and key not in ROLE_KEYS):
+            return False, "Invalid rule key"
+        rules = data.get("autoRules") if isinstance(data.get("autoRules"), dict) else {}
+        rules.setdefault("byMode", {})
+        rules.setdefault("byRole", {})
+        if profile:
+            existing = _find_existing(data, profile)
+            if existing is None:
+                return False, "Profile not found"
+            rules[bucket][key] = existing
+        else:
+            rules[bucket].pop(key, None)
+        data["autoRules"] = rules
+        if not _save(data):
+            return False, "Could not save profiles file"
+        return True, "Rule saved"
+
+
+def resolve_auto_profile(game_mode: Optional[str], queue_id: Optional[int], position: Optional[str]) -> Optional[str]:
+    """Return the profile name a champ select should use, or None when no rule matches.
+    Role rules win over mode rules (a role is only assigned in Summoner's Rift draft modes)."""
+    rules = get_auto_rules()
+    role = normalize_role(position)
+    if role and rules["byRole"].get(role):
+        return rules["byRole"][role]
+    mode = normalize_game_mode(game_mode, queue_id)
+    return rules["byMode"].get(mode)
+
+
+# ---------------------------------------------------------------------------
+# Export / import (shareable codes)
+# ---------------------------------------------------------------------------
+EXPORT_PREFIX = "KPROF1:"
+
+
+def export_profile(name: str) -> tuple[bool, str]:
+    import base64
+    import zlib
+
+    with _lock:
+        data = _load()
+        existing = _find_existing(data, name or "")
+        if existing is None:
+            return False, "Profile not found"
+        if existing == data["active"]:
+            prof = _live_snapshot()
+        else:
+            prof = data["profiles"][existing]
+        payload = {"name": existing, "historic": prof.get("historic", {}), "targets": prof.get("targets", {})}
+        raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        code = base64.urlsafe_b64encode(zlib.compress(raw, 9)).decode("ascii").rstrip("=")
+        return True, EXPORT_PREFIX + code
+
+
+def import_profile(code: str, new_name: Optional[str] = None, activate: bool = False) -> tuple[bool, str]:
+    import base64
+    import zlib
+
+    code = (code or "").strip()
+    if not code.startswith(EXPORT_PREFIX):
+        return False, "Invalid profile code"
+    body = code[len(EXPORT_PREFIX):]
+    try:
+        body += "=" * (-len(body) % 4)
+        raw = zlib.decompress(base64.urlsafe_b64decode(body.encode("ascii")))
+        payload = json.loads(raw.decode("utf-8"))
+        historic = payload.get("historic") or {}
+        targets = payload.get("targets") or {}
+        if not isinstance(historic, dict) or not isinstance(targets, dict):
+            raise ValueError("bad payload")
+    except Exception:
+        return False, "Invalid profile code"
+
+    with _lock:
+        data = _load()
+        base_name = normalize_name(new_name) or normalize_name(payload.get("name")) or "Imported"
+        candidate, i = base_name, 2
+        while _find_existing(data, candidate):
+            candidate = f"{base_name} {i}"[:MAX_PROFILE_NAME_LENGTH]
+            i += 1
+        if len(data["profiles"]) >= MAX_PROFILES:
+            return False, f"Maximum of {MAX_PROFILES} profiles reached"
+        clean_hist: Dict[str, Union[int, str]] = {}
+        for k, v in historic.items():
+            try:
+                key = str(int(k))
+            except (TypeError, ValueError):
+                continue
+            if isinstance(v, int) or (isinstance(v, str) and v.startswith("path:")):
+                clean_hist[key] = v
+        clean_targets: Dict[str, int] = {}
+        for k, v in targets.items():
+            try:
+                clean_targets[str(int(k))] = int(v)
+            except (TypeError, ValueError):
+                continue
+        _snapshot_active(data)
+        data["profiles"][candidate] = {"historic": clean_hist, "targets": clean_targets}
+        if activate:
+            if not replace_historic_maps(clean_hist, clean_targets):
+                return False, "Could not write historic files"
+            data["active"] = candidate
+        if not _save(data):
+            return False, "Could not save profiles file"
+        return True, candidate
+
+
+def skin_ids_for_champion_across_profiles(champion_id: int) -> List[int]:
+    """All skin/chroma ids saved for a champion in any profile (custom mods excluded)."""
+    key = str(int(champion_id))
+    ids: List[int] = []
+    with _lock:
+        data = _load()
+        live = load_historic_map().get(key)
+        values = [live] + [p.get("historic", {}).get(key) for n, p in data["profiles"].items() if n != data["active"]]
+    for v in values:
+        if isinstance(v, int) and v not in ids:
+            ids.append(v)
+    return ids
+
+
 def snapshot_active_profile() -> None:
     """Persist the live files into the active profile (best-effort)."""
     with _lock:

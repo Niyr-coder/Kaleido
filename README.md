@@ -15,9 +15,24 @@ original sigue aplicando.
 
 - **Panel de ajustes en español.** El panel dentro del cliente de LoL está traducido (selector Español / English arriba del panel; la elección se guarda en el propio cliente).
 - **Perfiles de skins.** Cada skin con la que juegas se guarda en el perfil activo (es lo que usa el modo histórico). Crea perfiles como `Ranked`, `ARAM` o `Tryhard` desde el panel, cámbialos con un clic y verás la lista de campeones y skins guardadas de cada uno. Los perfiles viven en `%LOCALAPPDATA%\Rose\profiles.json`; el cambio aplica a partir de la siguiente selección de campeón.
+- **Perfil automático por rol y por modo de juego.** En "Reglas automáticas" eliges un perfil para Grieta, ARAM, URF, Arena, Swiftplay u otros, y otro por rol asignado (superior, jungla, central, inferior, soporte). Al empezar la selección de campeón Kaleido cambia solo al perfil que toca. Las reglas por rol tienen prioridad.
+- **Favoritas.** Ctrl+F sobre una skin en la selección de campeón la marca como favorita. Desde el panel se aplican con un clic y se quitan con la ×.
+- **Skin aleatoria configurable.** El dado puede elegir entre todas las skins, solo las favoritas del campeón o solo las guardadas en cualquier perfil.
+- **Skins recientes con atajos.** Ctrl+← y Ctrl+→ en la selección de campeón recorren las últimas skins usadas con ese campeón.
+- **Historial de partidas.** Cada skin inyectada queda registrada con modo de juego, perfil y resultado (victoria, derrota o remake) cuando el cliente lo informa. Se ve en el panel y se puede limpiar.
+- **Exportar e importar perfiles.** Un código `KPROF1:...` que se copia al portapapeles y que un amigo pega en su panel.
+- **Copiar la skin de un amigo en el modo Party.** Si un amigo de la party ya eligió skin para el mismo campeón, un botón la aplica en tu selección.
+- **Estado en la bandeja.** El menú del icono muestra el perfil activo, la última skin inyectada con su resultado y cuántas skins hay descargadas.
+- **Aviso de skins nuevas.** Si la sincronización al iniciar descargó skins nuevas, la bandeja lo notifica.
 - **Telemetría y actualizaciones desde el panel.** Dos casillas en "Privacidad y actualizaciones": enviar estadísticas anónimas (apagado por defecto) y buscar actualizaciones al iniciar (encendido por defecto). Se guardan en `config.ini` como `analytics_enabled` y `auto_update`.
 
 > El servidor de telemetría sigue siendo el de Rose (`ANALYTICS_SERVER_URL` en `config.py`) y el updater apunta a las releases de `Niyr-coder/Kaleido`. Cambia el primero cuando Krealos tenga su propio servidor.
+
+## Compilar e instalar
+
+El repositorio incluye un workflow de GitHub Actions ([build.yml](.github/workflows/build.yml)) que compila Pengu Loader,
+empaqueta Kaleido con PyInstaller y genera el instalador con Inno Setup en cada push. Al crear un tag `vX.Y.Z` publica una
+release con `Kaleido_Setup.exe` y un ZIP portable, que es lo que usa el auto-actualizador.
 
 ## Aviso legal
 

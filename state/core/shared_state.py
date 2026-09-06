@@ -86,6 +86,10 @@ class SharedState:
     random_skin_name: Optional[str] = None  # Selected random skin for injection
     random_skin_id: Optional[int] = None  # Selected random skin/chroma ID for injection
     random_mode_active: bool = False  # Tracks if randomization is active
+    # Kaleido
+    assigned_position: Optional[str] = None  # Role assigned in champ select (TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY)
+    auto_profile_generation: int = -1  # champ_select_generation for which the automatic profile was applied
+    auto_profile_name: Optional[str] = None  # Profile chosen automatically for the current champ select
 
     # Historic mode (remember last injected unowned skin per champion)
     historic_mode_active: bool = False  # Tracks if HistoricMode is active

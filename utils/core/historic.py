@@ -146,6 +146,12 @@ def write_historic_entry(champion_id: int, skin_or_chroma_id: Union[int, str]) -
     except Exception:
         # Silently ignore write errors; feature is best-effort
         pass
+    # Kaleido: every injected skin also goes to the usage history (best-effort)
+    try:
+        from utils.core import skin_history
+        skin_history.on_historic_written(int(champion_id), skin_or_chroma_id)
+    except Exception:
+        pass
 
 
 def replace_historic_maps(historic: Dict[str, Union[int, str]], targets: Dict[str, int]) -> bool:

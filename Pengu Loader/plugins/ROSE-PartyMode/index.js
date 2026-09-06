@@ -35,6 +35,7 @@
     "Failed to enable": "No se pudo activar",
     "Friend connected!": "¡Amigo conectado!",
     "Failed to connect": "No se pudo conectar",
+    "Copy skin": "Copiar skin",
   };
   function kt(text, vars) {
     let lang = "es";
@@ -453,7 +454,9 @@
       line-height: 14px;
     }
 
-    .peer-remove {
+    .peer-copy { background:#1e2328; border:1px solid #463714; color:#cdbe91; font-family:'Beaufort for LOL', serif; font-size:10px; padding:2px 8px; cursor:pointer; margin-right:6px; }
+      .peer-copy:hover { border-color:#8b5cf6; color:#f0e6d2; }
+      .peer-remove {
       background: none;
       border: none;
       color: #5b5a56;
@@ -844,7 +847,7 @@
             const displayName = isWaiting ? kt("Friend") : escapeHtml(peer.summoner_name);
             const lobbyStatus = peer.in_lobby ? "in-lobby" : "";
             const skinInfo = peer.skin_selection
-              ? `Skin: ${peer.skin_selection.skin_id}`
+              ? `Skin: ${peer.skin_selection.skin_name || peer.skin_selection.skin_id}`
               : "";
 
             return `
@@ -855,6 +858,7 @@
                 ${escapeHtml(statusText)}</span>
                 ${skinInfo ? `<span class="peer-skin">${skinInfo}</span>` : ""}
               </div>
+              ${peer.skin_selection ? `<button class="peer-copy" onclick="window.kaleidoPartyCopySkin(${peer.summoner_id})">${kt("Copy skin")}</button>` : ""}
               <button class="peer-remove" title="${kt("Remove")}" onclick="window.rosePartyRemovePeer(${peer.summoner_id})">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -940,6 +944,9 @@
   }
 
   // Global function for remove button onclick
+  window.kaleidoPartyCopySkin = (summonerId) => {
+    if (bridge) bridge.send({ type: "party-copy-skin", summonerId: Number(summonerId) });
+  };
   window.rosePartyRemovePeer = function (summonerId) {
     sendBridgeMessage({ type: "party-remove-peer", summoner_id: summonerId });
   };

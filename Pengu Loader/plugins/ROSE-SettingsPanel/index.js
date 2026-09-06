@@ -130,6 +130,58 @@
       "Could not write historic files": "No se pudieron escribir los archivos del historial",
       "Could not save profiles file": "No se pudo guardar el archivo de perfiles",
       "Profiles are not available (backend too old).": "Los perfiles no están disponibles (backend antiguo).",
+      "Random skin:": "Skin aleatoria:",
+      "Random skin info": "Información de la skin aleatoria",
+      "Controls which skins the dice button can pick: all of them, only your favorites of that champion, or only the skins saved for that champion in any profile. Falls back to all skins when the pool is empty.":
+        "Controla entre qué skins elige el botón del dado: todas, solo tus favoritas de ese campeón, o solo las skins guardadas para ese campeón en cualquier perfil. Si no hay ninguna, usa todas.",
+      "All skins": "Todas las skins",
+      "Only favorites": "Solo favoritas",
+      "Only profile skins": "Solo skins de perfiles",
+      "Automatic rules": "Reglas automáticas",
+      "Automatic rules info": "Información de las reglas automáticas",
+      "Pick a profile per game mode or per assigned role. When a champion select starts, Kaleido switches to the matching profile by itself. Role rules win over mode rules.":
+        "Elige un perfil por modo de juego o por rol asignado. Al empezar una selección de campeón, Kaleido cambia solo al perfil que corresponda. Las reglas por rol tienen prioridad sobre las de modo.",
+      "By game mode": "Por modo de juego",
+      "By role": "Por rol",
+      "Summoner's Rift": "Grieta del Invocador",
+      "ARAM": "ARAM",
+      "URF": "URF",
+      "Arena": "Arena",
+      "Swiftplay": "Swiftplay",
+      "Other modes": "Otros modos",
+      "Top": "Superior",
+      "Jungle": "Jungla",
+      "Mid": "Central",
+      "Bot": "Inferior",
+      "Support": "Soporte",
+      "No rule": "Sin regla",
+      "Export": "Exportar",
+      "Import": "Importar",
+      "Profile code copied to clipboard": "Código del perfil copiado al portapapeles",
+      "Copy this code and share it": "Copia este código y compártelo",
+      "Paste a profile code (KPROF1:...)": "Pega un código de perfil (KPROF1:...)",
+      "Activate after importing": "Activar al importar",
+      "Invalid profile code": "Código de perfil no válido",
+      "Favorites:": "Favoritas:",
+      "Favorites info": "Información de favoritas",
+      "Press Ctrl+F while hovering a skin in champion select to mark it as a favorite. Favorites can be applied with one click during champion select and used by the dice.":
+        "Pulsa Ctrl+F mientras pasas el cursor por una skin en la selección de campeón para marcarla como favorita. Las favoritas se aplican con un clic durante la selección y las puede usar el dado.",
+      "No favorites yet. Hover a skin in champion select and press Ctrl+F.": "Aún no hay favoritas. Pasa el cursor por una skin en la selección de campeón y pulsa Ctrl+F.",
+      "Apply": "Aplicar",
+      "Remove from favorites": "Quitar de favoritas",
+      "Match history:": "Historial de partidas:",
+      "History info": "Información del historial",
+      "Every injected skin is recorded here with the game mode and, when the client reports it, the result.":
+        "Cada skin inyectada se registra aquí con el modo de juego y, cuando el cliente lo informa, el resultado.",
+      "No games recorded yet.": "Todavía no hay partidas registradas.",
+      "Clear history": "Limpiar historial",
+      "Win": "Victoria",
+      "Loss": "Derrota",
+      "Remake": "Remake",
+      "Pending": "Pendiente",
+      "Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin":
+        "Atajos en la selección de campeón: Ctrl+← / Ctrl+→ recorre skins recientes · Ctrl+F marca la skin como favorita",
+      "Loaded": "Cargado",
     },
   };
   let currentLang = "es";
@@ -253,6 +305,20 @@
       .kaleido-profile-skin { font-size:11px; color:#a09b8c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .kaleido-entry-remove { flex:0 0 auto; background:transparent; border:1px solid transparent; color:#a09b8c; font-size:16px; line-height:1; width:22px; height:22px; cursor:pointer; }
       .kaleido-entry-remove:hover { color:#ff8a80; border-color:#c0392b; }
+      .kaleido-btn.small { height:22px; padding:0 8px; font-size:10px; }
+      .kaleido-select.small { height:22px; font-size:11px; padding:0 4px; }
+      .kaleido-subtitle { display:flex; align-items:center; gap:4px; margin-top:10px; font-family:'Beaufort for LOL', serif; font-size:11px; color:#c8aa6e; letter-spacing:0.06em; text-transform:uppercase; }
+      .kaleido-rules-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; width:100%; margin-top:6px; }
+      .kaleido-rule-head { font-family:'Beaufort for LOL', serif; font-size:10px; color:#a09b8c; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:4px; }
+      .kaleido-rule-row { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+      .kaleido-rule-label { flex:0 0 78px; font-family:'Beaufort for LOL', serif; font-size:11px; color:#cdbe91; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .kaleido-rule-row .kaleido-select { flex:1 1 auto; min-width:0; }
+      .kaleido-hint { margin-top:6px; font-family:'Beaufort for LOL', serif; font-size:10px; color:#7e6f4e; text-align:center; line-height:1.4; }
+      .kaleido-result { flex:0 0 auto; font-family:'Beaufort for LOL', serif; font-size:10px; letter-spacing:0.05em; padding:2px 6px; border:1px solid #463714; color:#a09b8c; text-transform:uppercase; }
+      .kaleido-result.win { color:#5b9a32; border-color:#5b9a32; }
+      .kaleido-result.loss { color:#ff8a80; border-color:#c0392b; }
+      .kaleido-result.remake { color:#c8aa6e; border-color:#c8aa6e; }
+      .kaleido-history-list { max-height:180px; }
     `;
   }
 
@@ -1339,6 +1405,7 @@
       version: payload.version || "",
       analyticsEnabled: !!payload.analyticsEnabled,
       autoUpdate: payload.autoUpdate === undefined ? true : !!payload.autoUpdate,
+      randomMode: payload.randomMode || "all",
     };
     // Update version badge if the panel is already open
     const badge = document.getElementById("rose-version-badge");
@@ -2256,8 +2323,43 @@
 
     form.appendChild(privacySection);
 
+    // Random skin mode (Kaleido)
+    const randomSection = document.createElement("div");
+    randomSection.className = "settings-section";
+    const randomLabel = document.createElement("label");
+    randomLabel.className = "settings-label";
+    const randomLabelText = document.createElement("span");
+    randomLabelText.textContent = t("Random skin:");
+    randomLabel.appendChild(createTooltipButton(
+      t("Controls which skins the dice button can pick: all of them, only your favorites of that champion, or only the skins saved for that champion in any profile. Falls back to all skins when the pool is empty."),
+      t("Random skin info")
+    ));
+    randomLabel.appendChild(randomLabelText);
+    randomSection.appendChild(randomLabel);
+    const randomSelect = document.createElement("select");
+    randomSelect.className = "kaleido-select";
+    randomSelect.id = "random-mode-select";
+    [["all", t("All skins")], ["favorites", t("Only favorites")], ["profiles", t("Only profile skins")]].forEach(([v, label]) => {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = label;
+      randomSelect.appendChild(o);
+    });
+    randomSelect.style.marginTop = "8px";
+    randomSelect.style.width = "100%";
+    randomSection.appendChild(randomSelect);
+    form.appendChild(randomSection);
+
     // Skin profiles section (Kaleido)
     form.appendChild(createProfilesSection());
+
+    // Favorites + history (Kaleido)
+    form.appendChild(createFavoritesSection());
+    form.appendChild(createHistorySection());
+
+    const hotkeysHint = document.createElement("div");
+    hotkeysHint.className = "kaleido-hint";
+    hotkeysHint.textContent = t("Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin");
+    form.appendChild(hotkeysHint);
 
     // Game path section
     const pathSection = document.createElement("div");
@@ -2675,6 +2777,225 @@
     requestSettings();
     requestDiagnostics();
     requestProfiles();
+    requestFavorites();
+    requestHistory();
+  }
+
+  // ---------------------------------------------------------------------
+  // Favorites (Kaleido)
+  // ---------------------------------------------------------------------
+  let favoritesState = { entries: [] };
+  let historyState = { entries: [] };
+
+  function requestFavorites() { if (bridge) bridge.send({ type: "favorites-request" }); }
+  function requestHistory() { if (bridge) bridge.send({ type: "history-request", limit: 15 }); }
+
+  function handleFavoritesData(payload) {
+    favoritesState = { entries: Array.isArray(payload.entries) ? payload.entries : [] };
+    loadChampionNames().then(() => renderFavoritesSection());
+    renderFavoritesSection();
+  }
+
+  function handleHistoryData(payload) {
+    historyState = { entries: Array.isArray(payload.entries) ? payload.entries : [] };
+    loadChampionNames().then(() => renderHistorySection());
+    renderHistorySection();
+  }
+
+  function handleProfileExportResult(payload) {
+    const out = document.getElementById("kaleido-export-output");
+    if (!out) return;
+    if (!payload.success) {
+      out.value = payload.error ? t(payload.error) : t("Invalid profile code");
+      return;
+    }
+    out.value = payload.code || "";
+    out.hidden = false;
+    let copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(payload.code || "").then(() => {
+          const note = document.getElementById("kaleido-export-note");
+          if (note) note.textContent = t("Profile code copied to clipboard");
+        }).catch(() => {});
+        copied = true;
+      }
+    } catch (e) {}
+    const note = document.getElementById("kaleido-export-note");
+    if (note) note.textContent = copied ? t("Profile code copied to clipboard") : t("Copy this code and share it");
+    out.focus();
+    out.select();
+  }
+
+  function createFavoritesSection() {
+    const section = document.createElement("div");
+    section.className = "settings-section";
+    const label = document.createElement("label");
+    label.className = "settings-label";
+    const text = document.createElement("span");
+    text.textContent = t("Favorites:");
+    label.appendChild(createTooltipButtonGlobal(
+      t("Press Ctrl+F while hovering a skin in champion select to mark it as a favorite. Favorites can be applied with one click during champion select and used by the dice."),
+      t("Favorites info")
+    ));
+    label.appendChild(text);
+    section.appendChild(label);
+    const body = document.createElement("div");
+    body.id = "kaleido-favorites-body";
+    section.appendChild(body);
+    renderFavoritesSection();
+    return section;
+  }
+
+  function renderFavoritesSection() {
+    const body = document.getElementById("kaleido-favorites-body");
+    if (!body) return;
+    body.innerHTML = "";
+    const names = _championNames || {};
+    const list = document.createElement("div");
+    list.className = "kaleido-profiles-list";
+    if (favoritesState.entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "kaleido-profiles-empty";
+      empty.textContent = t("No favorites yet. Hover a skin in champion select and press Ctrl+F.");
+      list.appendChild(empty);
+    } else {
+      favoritesState.entries.slice().sort((a, b) => {
+        const an = names[a.championId] || "", bn = names[b.championId] || "";
+        return an.localeCompare(bn) || a.championId - b.championId || a.skinId - b.skinId;
+      }).forEach((entry) => {
+        const item = document.createElement("div");
+        item.className = "kaleido-profile-entry";
+        const icon = document.createElement("img");
+        icon.className = "kaleido-profile-icon";
+        icon.src = `/lol-game-data/assets/v1/champion-icons/${entry.championId}.png`;
+        icon.alt = "";
+        icon.onerror = function () { this.style.visibility = "hidden"; };
+        item.appendChild(icon);
+        const txt = document.createElement("div");
+        txt.className = "kaleido-profile-text";
+        const champ = document.createElement("div");
+        champ.className = "kaleido-profile-champ";
+        champ.textContent = names[entry.championId] || t("Champion {id}", { id: entry.championId });
+        const skin = document.createElement("div");
+        skin.className = "kaleido-profile-skin";
+        skin.textContent = entry.skinName || t("Skin {id}", { id: entry.skinId });
+        txt.appendChild(champ); txt.appendChild(skin);
+        item.appendChild(txt);
+        const apply = document.createElement("button");
+        apply.type = "button";
+        apply.className = "kaleido-btn small";
+        apply.textContent = t("Apply");
+        apply.addEventListener("click", (e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (bridge) bridge.send({ type: "apply-skin", skinId: entry.skinId });
+        });
+        item.appendChild(apply);
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "kaleido-entry-remove";
+        remove.title = t("Remove from favorites");
+        remove.setAttribute("aria-label", t("Remove from favorites"));
+        remove.textContent = "×";
+        remove.addEventListener("click", (e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (bridge) bridge.send({ type: "favorite-remove", championId: entry.championId, skinId: entry.skinId });
+        });
+        item.appendChild(remove);
+        list.appendChild(item);
+      });
+    }
+    body.appendChild(list);
+  }
+
+  // ---------------------------------------------------------------------
+  // Match history (Kaleido)
+  // ---------------------------------------------------------------------
+  function createHistorySection() {
+    const section = document.createElement("div");
+    section.className = "settings-section";
+    const label = document.createElement("label");
+    label.className = "settings-label";
+    const text = document.createElement("span");
+    text.textContent = t("Match history:");
+    label.appendChild(createTooltipButtonGlobal(
+      t("Every injected skin is recorded here with the game mode and, when the client reports it, the result."),
+      t("History info")
+    ));
+    label.appendChild(text);
+    section.appendChild(label);
+    const body = document.createElement("div");
+    body.id = "kaleido-history-body";
+    section.appendChild(body);
+    renderHistorySection();
+    return section;
+  }
+
+  function formatHistoryDate(ts) {
+    try {
+      const d = new Date((ts || 0) * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch (e) { return ""; }
+  }
+
+  function renderHistorySection() {
+    const body = document.getElementById("kaleido-history-body");
+    if (!body) return;
+    body.innerHTML = "";
+    const names = _championNames || {};
+    const list = document.createElement("div");
+    list.className = "kaleido-profiles-list kaleido-history-list";
+    if (historyState.entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "kaleido-profiles-empty";
+      empty.textContent = t("No games recorded yet.");
+      list.appendChild(empty);
+    } else {
+      historyState.entries.forEach((entry) => {
+        const item = document.createElement("div");
+        item.className = "kaleido-profile-entry";
+        const icon = document.createElement("img");
+        icon.className = "kaleido-profile-icon";
+        icon.src = `/lol-game-data/assets/v1/champion-icons/${entry.championId}.png`;
+        icon.alt = "";
+        icon.onerror = function () { this.style.visibility = "hidden"; };
+        item.appendChild(icon);
+        const txt = document.createElement("div");
+        txt.className = "kaleido-profile-text";
+        const champ = document.createElement("div");
+        champ.className = "kaleido-profile-champ";
+        const mode = entry.gameMode ? ` · ${entry.gameMode}` : "";
+        champ.textContent = `${names[entry.championId] || t("Champion {id}", { id: entry.championId })}${mode}`;
+        const skin = document.createElement("div");
+        skin.className = "kaleido-profile-skin";
+        const what = entry.custom ? `${t("Custom mod")}: ${entry.custom}` : (entry.skinName || t("Skin {id}", { id: entry.skinId }));
+        skin.textContent = `${formatHistoryDate(entry.ts)} · ${what}${entry.profile ? ` · ${entry.profile}` : ""}`;
+        txt.appendChild(champ); txt.appendChild(skin);
+        item.appendChild(txt);
+        const badge = document.createElement("span");
+        const r = entry.result;
+        badge.className = "kaleido-result " + (r === "win" ? "win" : r === "loss" ? "loss" : r === "remake" ? "remake" : "pending");
+        badge.textContent = r === "win" ? t("Win") : r === "loss" ? t("Loss") : r === "remake" ? t("Remake") : t("Pending");
+        item.appendChild(badge);
+        list.appendChild(item);
+      });
+    }
+    body.appendChild(list);
+    if (historyState.entries.length > 0) {
+      const row = document.createElement("div");
+      row.className = "kaleido-profiles-row";
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "kaleido-btn";
+      clear.textContent = t("Clear history");
+      clear.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (bridge) bridge.send({ type: "history-clear" });
+      });
+      row.appendChild(clear);
+      body.appendChild(row);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -2689,6 +3010,7 @@
       active: payload.active || "",
       profiles: Array.isArray(payload.profiles) ? payload.profiles : [],
       entries: Array.isArray(payload.entries) ? payload.entries : [],
+      autoRules: payload.autoRules && typeof payload.autoRules === "object" ? payload.autoRules : { byMode: {}, byRole: {} },
       error: payload.error || null,
       available: true,
     };
@@ -2977,6 +3299,127 @@
       });
     }
     body.appendChild(list);
+
+    // ---- automatic rules (by mode / by role)
+    const rulesTitle = document.createElement("div");
+    rulesTitle.className = "kaleido-subtitle";
+    const rulesText = document.createElement("span");
+    rulesText.textContent = t("Automatic rules");
+    rulesTitle.appendChild(createTooltipButtonGlobal(
+      t("Pick a profile per game mode or per assigned role. When a champion select starts, Kaleido switches to the matching profile by itself. Role rules win over mode rules."),
+      t("Automatic rules info")
+    ));
+    rulesTitle.appendChild(rulesText);
+    body.appendChild(rulesTitle);
+
+    const rules = st.autoRules || { byMode: {}, byRole: {} };
+    const buildRuleRow = (kind, key, labelText) => {
+      const row = document.createElement("div");
+      row.className = "kaleido-rule-row";
+      const lbl = document.createElement("span");
+      lbl.className = "kaleido-rule-label";
+      lbl.textContent = labelText;
+      row.appendChild(lbl);
+      const sel = document.createElement("select");
+      sel.className = "kaleido-select small";
+      const none = document.createElement("option");
+      none.value = ""; none.textContent = t("No rule");
+      sel.appendChild(none);
+      st.profiles.forEach((p) => {
+        const o = document.createElement("option");
+        o.value = p.name; o.textContent = p.name;
+        sel.appendChild(o);
+      });
+      const current = (kind === "mode" ? rules.byMode : rules.byRole) || {};
+      sel.value = current[key] || "";
+      sel.addEventListener("change", () => {
+        sendProfileAction("profile-auto-rule", { kind, key, profile: sel.value || null });
+      });
+      row.appendChild(sel);
+      return row;
+    };
+    const rulesGrid = document.createElement("div");
+    rulesGrid.className = "kaleido-rules-grid";
+    const modeCol = document.createElement("div");
+    const modeHead = document.createElement("div");
+    modeHead.className = "kaleido-rule-head";
+    modeHead.textContent = t("By game mode");
+    modeCol.appendChild(modeHead);
+    [["CLASSIC", t("Summoner's Rift")], ["ARAM", t("ARAM")], ["URF", t("URF")], ["ARENA", t("Arena")], ["SWIFTPLAY", t("Swiftplay")], ["OTHER", t("Other modes")]]
+      .forEach(([k, l]) => modeCol.appendChild(buildRuleRow("mode", k, l)));
+    const roleCol = document.createElement("div");
+    const roleHead = document.createElement("div");
+    roleHead.className = "kaleido-rule-head";
+    roleHead.textContent = t("By role");
+    roleCol.appendChild(roleHead);
+    [["TOP", t("Top")], ["JUNGLE", t("Jungle")], ["MIDDLE", t("Mid")], ["BOTTOM", t("Bot")], ["UTILITY", t("Support")]]
+      .forEach(([k, l]) => roleCol.appendChild(buildRuleRow("role", k, l)));
+    rulesGrid.appendChild(modeCol);
+    rulesGrid.appendChild(roleCol);
+    body.appendChild(rulesGrid);
+
+    // ---- export / import
+    const ioRow = document.createElement("div");
+    ioRow.className = "kaleido-profiles-row";
+    ioRow.appendChild(mkBtn(t("Export"), () => {
+      sendProfileAction("profile-export", { name: st.active });
+    }));
+    ioRow.appendChild(mkBtn(t("Import"), () => {
+      _profilesUiMode = { mode: "import", target: null, deleteArmedAt: 0 };
+      renderProfilesSection();
+    }));
+    body.appendChild(ioRow);
+    const exportOut = document.createElement("input");
+    exportOut.type = "text";
+    exportOut.readOnly = true;
+    exportOut.id = "kaleido-export-output";
+    exportOut.className = "settings-input kaleido-profile-input";
+    exportOut.hidden = true;
+    body.appendChild(exportOut);
+    const exportNote = document.createElement("div");
+    exportNote.id = "kaleido-export-note";
+    exportNote.className = "kaleido-hint";
+    body.appendChild(exportNote);
+
+    if (_profilesUiMode.mode === "import") {
+      const editor = document.createElement("div");
+      editor.className = "kaleido-profiles-editor";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "settings-input kaleido-profile-input";
+      input.placeholder = t("Paste a profile code (KPROF1:...)");
+      editor.appendChild(input);
+      const actWrap = document.createElement("label");
+      actWrap.className = "settings-checkbox-wrapper kaleido-copy-wrap";
+      const actCheckbox = document.createElement("input");
+      actCheckbox.type = "checkbox";
+      actCheckbox.className = "settings-checkbox";
+      actWrap.appendChild(actCheckbox);
+      const actText = document.createElement("span");
+      actText.textContent = t("Activate after importing");
+      actWrap.appendChild(actText);
+      editor.appendChild(actWrap);
+      const actions = document.createElement("div");
+      actions.className = "kaleido-profiles-row";
+      const submit = () => {
+        const code = (input.value || "").trim();
+        if (!code) { input.focus(); return; }
+        sendProfileAction("profile-import", { code, activate: actCheckbox.checked });
+        _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 };
+      };
+      actions.appendChild(mkBtn(t("Import"), submit, "primary"));
+      actions.appendChild(mkBtn(t("Cancel"), () => {
+        _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 };
+        renderProfilesSection();
+      }));
+      editor.appendChild(actions);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); submit(); }
+        if (e.key === "Escape") { _profilesUiMode = { mode: "idle", target: null, deleteArmedAt: 0 }; renderProfilesSection(); }
+      });
+      body.appendChild(editor);
+      setTimeout(() => input.focus(), 0);
+    }
   }
 
   function setupSliderInteractions(sliderId, slider, button, fill, valueDisplay, min, max, valueConverter, displayFormatter) {
@@ -3178,6 +3621,10 @@
     if (autoUpdateCheckbox) {
       autoUpdateCheckbox.checked = currentSettings.autoUpdate !== false;
     }
+    const randomModeSelect = document.getElementById("random-mode-select");
+    if (randomModeSelect) {
+      randomModeSelect.value = currentSettings.randomMode || "all";
+    }
 
     if (pathInput) {
       pathInput.value = currentSettings.gamePath || "";
@@ -3266,6 +3713,8 @@
     const autoUpdateCheckbox = document.getElementById("autoupdate-checkbox");
     const analyticsEnabled = analyticsCheckbox ? analyticsCheckbox.checked : false;
     const autoUpdate = autoUpdateCheckbox ? autoUpdateCheckbox.checked : true;
+    const randomModeSelect = document.getElementById("random-mode-select");
+    const randomMode = randomModeSelect ? randomModeSelect.value : "all";
 
     // Clamp threshold between 0.30 and 2.0
     const clampedThreshold = Math.max(0.3, Math.min(2.0, threshold));
@@ -3283,6 +3732,7 @@
       gamePath: gamePath,
       analyticsEnabled: analyticsEnabled,
       autoUpdate: autoUpdate,
+      randomMode: randomMode,
     });
 
     log("info", "Settings save requested", {
@@ -4578,6 +5028,9 @@
       bridge.subscribe("champion-skins-response", handleChampionSkinsResponse);
       bridge.subscribe("folder-opened-response", handleFolderOpenedResponse);
       bridge.subscribe("profiles-data", handleProfilesData);
+      bridge.subscribe("favorites-data", handleFavoritesData);
+      bridge.subscribe("history-data", handleHistoryData);
+      bridge.subscribe("profile-export-result", handleProfileExportResult);
 
       // On every (re)connect, sync state
       bridge.onReady(() => {

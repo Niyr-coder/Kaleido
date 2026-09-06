@@ -106,6 +106,14 @@ class WebSocketEventHandler:
                 # Detect game mode FIRST to get accurate is_swiftplay_mode flag
                 if self.game_mode_detector:
                     self.game_mode_detector.detect_game_mode()
+                # Kaleido: new champ select -> forget the previous role, remember mode for the history
+                try:
+                    self.state.assigned_position = None
+                    self.state.auto_profile_name = None
+                    from utils.core import skin_history
+                    skin_history.set_context(self.state.current_game_mode, self.state.current_queue_id)
+                except Exception:
+                    pass
                 
                 # Refresh injection threshold
                 if self.injection_manager:
@@ -258,6 +266,38 @@ class WebSocketEventHandler:
             log_status(log, "Champion hovered", f"{nm} (ID: {cid})", "👆")
             self.state.hovered_champ_id = cid
     
+    def _maybe_apply_auto_profile(self) -> None:
+        """Switch the active skin profile according to the user's auto rules (Kaleido)."""
+        from utils.core import profiles as skin_profiles
+        from utils.core import skin_history
+
+        generation = getattr(self.state, "champ_select_generation", 0)
+        if getattr(self.state, "auto_profile_generation", -1) == generation:
+            return
+        # A role can arrive a few session events after the first one; wait for it in ranked-like modes
+        rules = skin_profiles.get_auto_rules()
+        if not rules["byMode"] and not rules["byRole"]:
+            self.state.auto_profile_generation = generation
+            return
+        mode = skin_profiles.normalize_game_mode(self.state.current_game_mode, self.state.current_queue_id)
+        position = getattr(self.state, "assigned_position", None)
+        if mode == "CLASSIC" and rules["byRole"] and not position and getattr(self.state, "locked_champ_id", None) is None:
+            return  # keep waiting for the assigned position until the champion is locked
+        skin_history.set_context(self.state.current_game_mode, self.state.current_queue_id)
+        target = skin_profiles.resolve_auto_profile(self.state.current_game_mode, self.state.current_queue_id, position)
+        self.state.auto_profile_generation = generation
+        self.state.auto_profile_name = target
+        if not target or target == skin_profiles.get_active_profile_name():
+            return
+        ok, message = skin_profiles.switch_profile(target)
+        if ok:
+            log.info(f"[Kaleido] Auto profile: switched to '{target}' (mode={mode}, role={position})")
+            self.state.historic_mode_active = False
+            self.state.historic_skin_id = None
+            self.state.historic_first_detection_done = False
+        else:
+            log.warning(f"[Kaleido] Auto profile switch to '{target}' failed: {message}")
+
     def _handle_session_event(self, payload: dict):
         """Handle champion select session event"""
         sess = payload.get("data") or {}
@@ -268,6 +308,14 @@ class WebSocketEventHandler:
             my_team = sess.get("myTeam") or []
             for player in my_team:
                 if player.get("cellId") == self.state.local_cell_id:
+                    # Kaleido: automatic profile by role / game mode (once per champ select)
+                    try:
+                        position = player.get("assignedPosition") or None
+                        if position:
+                            self.state.assigned_position = str(position).upper()
+                        self._maybe_apply_auto_profile()
+                    except Exception as exc:  # noqa: BLE001
+                        log.debug(f"[Kaleido] auto profile check failed: {exc}")
                     selected_skin = player.get("selectedSkinId")
                     if selected_skin is not None:
                         skin_int = int(selected_skin)

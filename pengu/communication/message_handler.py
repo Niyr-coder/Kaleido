@@ -239,6 +239,28 @@ class MessageHandler:
             self._handle_profile_action(payload, "delete")
         elif payload_type == "profile-remove-entry":
             self._handle_profile_action(payload, "remove-entry")
+        elif payload_type == "profile-export":
+            self._handle_profile_export(payload)
+        elif payload_type == "profile-import":
+            self._handle_profile_import(payload)
+        elif payload_type == "profile-auto-rule":
+            self._handle_profile_auto_rule(payload)
+        elif payload_type == "favorites-request":
+            self._handle_favorites_request(payload)
+        elif payload_type == "favorite-toggle":
+            self._handle_favorite_toggle(payload)
+        elif payload_type == "favorite-remove":
+            self._handle_favorite_remove(payload)
+        elif payload_type == "history-request":
+            self._handle_history_request(payload)
+        elif payload_type == "history-clear":
+            self._handle_history_clear(payload)
+        elif payload_type == "apply-skin":
+            self._handle_apply_skin(payload)
+        elif payload_type == "cycle-recent-skin":
+            self._handle_cycle_recent_skin(payload)
+        elif payload_type == "party-copy-skin":
+            self._handle_party_copy_skin(payload)
         elif payload_type == "add-custom-mods-category-selected":
             self._handle_add_custom_mods_category_selected(payload)
         elif payload_type == "add-custom-mods-champion-selected":
@@ -438,6 +460,7 @@ class MessageHandler:
                 "version": APP_VERSION,
                 "analyticsEnabled": get_config_bool("General", "analytics_enabled", ANALYTICS_USER_DEFAULT),
                 "autoUpdate": get_config_bool("General", "auto_update", AUTO_UPDATE_USER_DEFAULT),
+                "randomMode": (get_config_option("General", "random_mode", "all") or "all"),
             }
             self._send_response(json.dumps(response_payload))
             
@@ -2130,6 +2153,12 @@ class MessageHandler:
                 analytics_enabled = bool(payload.get("analyticsEnabled"))
                 set_config_option("General", "analytics_enabled", "true" if analytics_enabled else "false")
                 log.info(f"[SkinMonitor] Anonymous telemetry {'enabled' if analytics_enabled else 'disabled'} via settings panel")
+            if "randomMode" in payload:
+                random_mode = str(payload.get("randomMode") or "all").lower()
+                if random_mode not in ("all", "favorites", "profiles"):
+                    random_mode = "all"
+                set_config_option("General", "random_mode", random_mode)
+                log.info(f"[SkinMonitor] Random mode set to {random_mode} via settings panel")
             if "autoUpdate" in payload:
                 auto_update = bool(payload.get("autoUpdate"))
                 set_config_option("General", "auto_update", "true" if auto_update else "false")
@@ -2241,6 +2270,7 @@ class MessageHandler:
             "active": skin_profiles.get_active_profile_name(),
             "profiles": skin_profiles.list_profiles(),
             "entries": entries_out,
+            "autoRules": skin_profiles.get_auto_rules(),
             "error": error,
         }
 
@@ -2288,6 +2318,186 @@ class MessageHandler:
             self._send_response(json.dumps(self._build_profiles_payload(None if ok else message)))
         except Exception as e:
             log.error(f"[Profiles] Failed to send profiles data: {e}")
+
+    # ------------------------------------------------------------------
+    # Kaleido: favorites, history, apply-skin, export/import, auto rules, party copy
+    # ------------------------------------------------------------------
+    def _skin_display_name(self, skin_id) -> Optional[str]:
+        try:
+            skin_id = int(skin_id)
+        except (TypeError, ValueError):
+            return None
+        try:
+            mapping = getattr(self.skin_processor, "skin_mapping", None)
+            name = mapping.find_skin_name_by_skin_id(skin_id) if mapping else None
+            if name:
+                return name
+            cache = getattr(self.skin_scraper, "cache", None) if self.skin_scraper else None
+            chroma_map = getattr(cache, "chroma_id_map", None) if cache is not None else None
+            info = chroma_map.get(skin_id) if isinstance(chroma_map, dict) else None
+            if isinstance(info, dict) and info.get("name"):
+                return str(info["name"])
+            base_id = get_base_skin_id_for_chroma(skin_id, chroma_map)
+            if base_id and base_id != skin_id and mapping:
+                base_name = mapping.find_skin_name_by_skin_id(base_id)
+                if base_name:
+                    return f"{base_name} (chroma)"
+        except Exception:
+            pass
+        return None
+
+    def _send_toast(self, text: str, kind: str = "info") -> None:
+        try:
+            self._send_response(json.dumps({"type": "kaleido-toast", "text": text, "kind": kind,
+                                            "timestamp": int(time.time() * 1000)}))
+        except Exception:
+            pass
+
+    def _handle_profile_export(self, payload: dict) -> None:
+        from utils.core import profiles as skin_profiles
+        ok, result = skin_profiles.export_profile(str(payload.get("name") or skin_profiles.get_active_profile_name()))
+        self._send_response(json.dumps({"type": "profile-export-result", "success": ok,
+                                        "code": result if ok else None, "error": None if ok else result}))
+
+    def _handle_profile_import(self, payload: dict) -> None:
+        from utils.core import profiles as skin_profiles
+        ok, result = skin_profiles.import_profile(str(payload.get("code") or ""), payload.get("name"),
+                                                  activate=bool(payload.get("activate", False)))
+        if ok:
+            log.info(f"[Profiles] Imported profile '{result}'")
+        self._send_response(json.dumps(self._build_profiles_payload(None if ok else result)))
+        if ok:
+            self._send_toast(f"{result}", "success")
+
+    def _handle_profile_auto_rule(self, payload: dict) -> None:
+        from utils.core import profiles as skin_profiles
+        ok, message = skin_profiles.set_auto_rule(str(payload.get("kind") or ""), str(payload.get("key") or ""),
+                                                  payload.get("profile") or None)
+        if not ok:
+            log.warning(f"[Profiles] auto rule failed: {message}")
+        self._send_response(json.dumps(self._build_profiles_payload(None if ok else message)))
+
+    def _build_favorites_payload(self) -> dict:
+        from utils.core import favorites
+        entries = []
+        for e in favorites.all_entries():
+            entries.append({"championId": e["championId"], "skinId": e["skinId"],
+                            "skinName": self._skin_display_name(e["skinId"])})
+        return {"type": "favorites-data", "entries": entries}
+
+    def _handle_favorites_request(self, payload: dict) -> None:
+        self._send_response(json.dumps(self._build_favorites_payload()))
+
+    def _handle_favorite_toggle(self, payload: dict) -> None:
+        """Toggle a favorite. Without skinId, uses the skin currently hovered in champ select."""
+        from utils.core import favorites
+        champ_id = payload.get("championId") or self.shared_state.locked_champ_id or self.shared_state.hovered_champ_id
+        skin_id = payload.get("skinId") or getattr(self.shared_state, "ui_skin_id", None) \
+            or getattr(self.shared_state, "last_hovered_skin_id", None)
+        if not champ_id or not skin_id:
+            self._send_toast("Hover a skin first", "error")
+            return
+        try:
+            now_fav = favorites.toggle_favorite(int(champ_id), int(skin_id))
+        except Exception as exc:
+            self._send_toast(str(exc), "error")
+            return
+        name = self._skin_display_name(skin_id) or f"Skin {skin_id}"
+        self._send_toast(f"{'★ ' if now_fav else '☆ '}{name}", "success" if now_fav else "info")
+        self._send_response(json.dumps(self._build_favorites_payload()))
+
+    def _handle_favorite_remove(self, payload: dict) -> None:
+        from utils.core import favorites
+        try:
+            favorites.remove_favorite(int(payload.get("championId")), int(payload.get("skinId")))
+        except Exception as exc:
+            log.debug(f"[Favorites] remove failed: {exc}")
+        self._send_response(json.dumps(self._build_favorites_payload()))
+
+    def _handle_history_request(self, payload: dict) -> None:
+        from utils.core import skin_history
+        entries = []
+        for e in skin_history.list_entries(int(payload.get("limit") or 30)):
+            item = dict(e)
+            if item.get("skinId") is not None:
+                item["skinName"] = self._skin_display_name(item["skinId"])
+            entries.append(item)
+        self._send_response(json.dumps({"type": "history-data", "entries": entries}))
+
+    def _handle_history_clear(self, payload: dict) -> None:
+        from utils.core import skin_history
+        skin_history.clear()
+        self._send_response(json.dumps({"type": "history-data", "entries": []}))
+
+    def _apply_skin_id(self, skin_id: int, source: str) -> tuple[bool, str]:
+        try:
+            from ui.core.user_interface import get_user_interface
+            ui = get_user_interface(self.shared_state, self.skin_scraper)
+            ok, message = ui.apply_skin(int(skin_id))
+        except Exception as exc:
+            ok, message = False, str(exc)
+        if ok:
+            log.info(f"[Kaleido] Applied skin {skin_id} from {source}: {message}")
+            self._send_toast(message, "success")
+        else:
+            log.warning(f"[Kaleido] apply-skin {skin_id} from {source} failed: {message}")
+            self._send_toast(message, "error")
+        return ok, message
+
+    def _handle_apply_skin(self, payload: dict) -> None:
+        try:
+            skin_id = int(payload.get("skinId"))
+        except (TypeError, ValueError):
+            self._send_toast("Invalid skin id", "error")
+            return
+        self._apply_skin_id(skin_id, "panel")
+
+    def _handle_cycle_recent_skin(self, payload: dict) -> None:
+        """Ctrl+Left / Ctrl+Right in champ select: cycle through the recent skins of the locked champion."""
+        from utils.core import skin_history
+        champ_id = self.shared_state.locked_champ_id
+        if not champ_id:
+            self._send_toast("Lock a champion first", "error")
+            return
+        recent = skin_history.recent_skins_for_champion(int(champ_id), limit=8)
+        if not recent:
+            self._send_toast("No recent skins for this champion", "info")
+            return
+        direction = 1 if str(payload.get("direction", "next")) != "prev" else -1
+        current = getattr(self.shared_state, "random_skin_id", None)
+        try:
+            idx = recent.index(int(current)) if current is not None else -1
+        except ValueError:
+            idx = -1
+        target = recent[(idx + direction) % len(recent)]
+        self._apply_skin_id(target, "hotkey")
+
+    def _handle_party_copy_skin(self, payload: dict) -> None:
+        """Copy the skin a party member picked for the champion we locked."""
+        party_manager = getattr(self.shared_state, "party_manager", None)
+        champ_id = self.shared_state.locked_champ_id
+        if not party_manager or not champ_id:
+            self._send_toast("Lock a champion first", "error")
+            return
+        try:
+            summoner_id = int(payload.get("summonerId"))
+        except (TypeError, ValueError):
+            self._send_toast("Invalid friend", "error")
+            return
+        selection = None
+        try:
+            selections = party_manager.state.get_all_skin_selections()
+            selection = selections.get(summoner_id)
+        except Exception as exc:
+            log.debug(f"[Party] copy skin lookup failed: {exc}")
+        if not selection:
+            self._send_toast("Your friend has not picked a skin yet", "info")
+            return
+        if int(selection.champion_id) != int(champ_id):
+            self._send_toast("Your friend plays another champion", "info")
+            return
+        target = selection.chroma_id or selection.skin_id
+        self._apply_skin_id(int(target), "party")
 
     def _handle_skin_detection(self, payload: dict) -> None:
         """Handle skin detection message"""

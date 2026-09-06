@@ -1,0 +1,79 @@
+name: Build Kaleido
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Run tests
+        run: python -m pytest -q analytics/tests test
+
+      - name: Syntax-check Pengu plugins
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "Pengu Loader/plugins" -Recurse -Filter "*.js" | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit 1 } }
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Pengu Loader + Kaleido + installer
+        run: python scripts/build_all.py
+
+      - name: Smoke-test the packaged executable
+        shell: pwsh
+        run: |
+          $exe = "dist/Rose/Rose.exe"
+          if (-not (Test-Path $exe)) { throw "Packaged executable not found" }
+          if (-not (Test-Path "dist/Rose/Pengu Loader/Pengu Loader.exe")) { throw "Pengu Loader.exe missing from bundle" }
+          if (-not (Test-Path "dist/Rose/_internal/Pengu Loader/plugins/ROSE-KaleidoHotkeys/index.js") -and -not (Test-Path "dist/Rose/Pengu Loader/plugins/ROSE-KaleidoHotkeys/index.js")) { throw "Kaleido plugin missing from bundle" }
+          Get-ChildItem installer/*.exe | ForEach-Object { "Installer: $($_.Name) $([math]::Round($_.Length/1MB,1)) MB" }
+
+      - name: Zip the portable build
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path config.py -Pattern 'APP_VERSION = "([^"]+)"').Matches[0].Groups[1].Value
+          Compress-Archive -Path "dist/Rose/*" -DestinationPath "installer/Kaleido_$version.zip" -Force
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kaleido-build
+          path: |
+            installer/*.exe
+            installer/*.zip
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Kaleido ${{ env.VERSION }}
+          files: |
+            installer/*.exe
+            installer/*.zip
+          generate_release_notes: true

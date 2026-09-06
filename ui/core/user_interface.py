@@ -220,6 +220,13 @@ class UserInterface:
         if lcu:
             self.randomization_handler.force_base_skin_and_randomize(lcu)
     
+    def apply_skin(self, skin_id: int) -> tuple[bool, str]:
+        """Kaleido: select a specific skin/chroma id for injection (favorites, recent, party copy)."""
+        if not self.state.locked_champ_id:
+            return False, "Lock a champion first"
+        lcu = self.skin_scraper.lcu if self.skin_scraper and hasattr(self.skin_scraper, 'lcu') else None
+        return self.randomization_handler.apply_specific_skin(lcu, skin_id)
+
     def _handle_dice_click_enabled(self):
         """Handle dice button click in enabled state - cancel randomization"""
         self.randomization_handler.handle_dice_click_enabled()

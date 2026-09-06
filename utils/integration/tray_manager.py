@@ -146,6 +146,11 @@ class TrayManager:
         return self._create_icon_image()
     
     def _on_quit(self, icon, item):
+        try:
+            if getattr(self, "_stop_refresher", None):
+                self._stop_refresher.set()
+        except Exception:
+            pass
         """Handle quit menu item click"""
         log.info("Quit requested from system tray")
         try:
@@ -201,10 +206,77 @@ class TrayManager:
         except Exception as e:
             log.error(f"Failed to open mods folder: {e}")
 
+    # ----- Kaleido status lines (evaluated every time the menu opens) -----
+    @staticmethod
+    def _status_profile(item=None) -> str:
+        try:
+            from utils.core import profiles as skin_profiles
+            return f"Perfil: {skin_profiles.get_active_profile_name()}"
+        except Exception:
+            return "Perfil: -"
+
+    @staticmethod
+    def _status_last_skin(item=None) -> str:
+        try:
+            from datetime import datetime
+            from utils.core import skin_history
+            last = skin_history.last_entry()
+            if not last:
+                return "Última skin: ninguna todavía"
+            when = datetime.fromtimestamp(int(last.get("ts") or 0)).strftime("%d/%m %H:%M")
+            what = last.get("custom") or (f"skin {last.get('skinId')}" if last.get("skinId") else "?")
+            res = {"win": " · victoria", "loss": " · derrota", "remake": " · remake"}.get(last.get("result") or "", "")
+            return f"Última skin: {what} ({when}){res}"
+        except Exception:
+            return "Última skin: -"
+
+    @staticmethod
+    def _status_skins_count(item=None) -> str:
+        try:
+            from utils.core.paths import get_skins_dir
+            root = get_skins_dir()
+            n = sum(1 for p in root.rglob("*") if p.is_file() and p.suffix.lower() in (".zip", ".fantome"))
+            return f"Skins descargadas: {n}"
+        except Exception:
+            return "Skins descargadas: -"
+
+    def notify(self, title: str, message: str) -> None:
+        """Show a Windows notification from the tray icon (best-effort)."""
+        try:
+            if self.icon and hasattr(self.icon, "notify"):
+                self.icon.notify(message, title)
+        except Exception as e:
+            log.debug(f"Tray notification failed: {e}")
+
+    def notify_pending_new_skins(self) -> None:
+        """Kaleido: the launcher leaves state/new_skins.json when the sync downloaded new skins."""
+        try:
+            from utils.core.paths import get_state_dir
+            import json as _json
+            marker = get_state_dir() / "new_skins.json"
+            if not marker.exists():
+                return
+            data = _json.loads(marker.read_text(encoding="utf-8"))
+            marker.unlink(missing_ok=True)
+            count = int(data.get("count") or 0)
+            if count <= 0:
+                return
+            sample = ", ".join(str(x) for x in (data.get("sample") or [])[:3])
+            msg = f"{count} skin{'s' if count != 1 else ''} nueva{'s' if count != 1 else ''} descargada{'s' if count != 1 else ''}"
+            if sample:
+                msg += f": {sample}"
+            self.notify("Kaleido", msg)
+            log.info(f"[Kaleido] New skins notification: {msg}")
+        except Exception as e:
+            log.debug(f"New skins notification failed: {e}")
+
     def _create_menu(self) -> pystray.Menu:
         """Create the context menu for the tray icon"""
         return pystray.Menu(
             pystray.MenuItem(f"Kaleido v{APP_VERSION}", None, enabled=False),
+            pystray.MenuItem(self._status_profile, None, enabled=False),
+            pystray.MenuItem(self._status_last_skin, None, enabled=False),
+            pystray.MenuItem(self._status_skins_count, None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open Mods Folder", self._on_open_mods),
             pystray.Menu.SEPARATOR,
@@ -228,6 +300,20 @@ class TrayManager:
             )
             
             log.info("System tray icon started")
+
+            # Kaleido: the status lines in the menu are callables; pystray on Windows only
+            # re-evaluates them on update_menu(), so refresh them periodically.
+            def _menu_refresher():
+                while self.icon is not None and not self._stop_refresher.is_set():
+                    if self._stop_refresher.wait(30):
+                        break
+                    try:
+                        self.icon.update_menu()
+                    except Exception as exc:  # noqa: BLE001
+                        log.debug(f"Tray menu refresh failed: {exc}")
+
+            self._stop_refresher = threading.Event()
+            threading.Thread(target=_menu_refresher, name="KaleidoTrayMenu", daemon=True).start()
             # Use run_detached to prevent blocking the main thread
             self.icon.run_detached()
         except Exception as e:
@@ -304,6 +390,8 @@ class TrayManager:
                 if self._unlocked_icon_image:
                     self.icon.icon = self._unlocked_icon_image
                     log.info("Bloomed icon shown")
+                # Kaleido: tell the user about skins added by the startup sync
+                self.notify_pending_new_skins()
             else:
                 log.warning(f"Unknown status: {status}")
         except Exception as e:

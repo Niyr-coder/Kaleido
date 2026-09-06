@@ -198,8 +198,60 @@ class PhaseHandler:
             except Exception as e:
                 log.debug(f"[phase] Error destroying chroma panel: {e}")
     
+    def _record_game_result_async(self):
+        """Kaleido: attach win/loss to the last history entry (best-effort, background)."""
+        import threading
+        import time as _time
+
+        lcu = self.lcu
+
+        def worker():
+            from utils.core import skin_history
+            for _attempt in range(6):
+                try:
+                    stats = lcu.get("/lol-end-of-game/v1/eog-stats-block") if lcu and getattr(lcu, "ok", False) else None
+                except Exception:
+                    stats = None
+                result = None
+                if isinstance(stats, dict) and stats:
+                    try:
+                        local = stats.get("localPlayer") or {}
+                        my_team_id = local.get("teamId")
+                        my_id = local.get("summonerId")
+                        if stats.get("gameLengthSeconds", 999) < 300 and any(
+                            str(t.get("isWinningTeam")).lower() == "false" for t in (stats.get("teams") or [])
+                        ) and not any(str(t.get("isWinningTeam")).lower() == "true" for t in (stats.get("teams") or [])):
+                            result = "remake"
+                        for team in stats.get("teams") or []:
+                            if not isinstance(team, dict):
+                                continue
+                            players = team.get("players") or []
+                            mine = (my_team_id is not None and team.get("teamId") == my_team_id) or any(
+                                isinstance(p, dict) and my_id is not None and p.get("summonerId") == my_id for p in players
+                            )
+                            if mine and result is None:
+                                result = "win" if team.get("isWinningTeam") else "loss"
+                        if result is None:
+                            win_stat = (local.get("stats") or {}).get("WIN")
+                            if win_stat is not None:
+                                result = "win" if int(win_stat) else "loss"
+                    except Exception:
+                        result = None
+                if result:
+                    if skin_history.set_last_result(result):
+                        log.info(f"[Kaleido] Game result recorded: {result}")
+                    return
+                _time.sleep(2.0)
+            log.debug("[Kaleido] Game result not available from the LCU")
+
+        threading.Thread(target=worker, name="KaleidoGameResult", daemon=True).start()
+
     def _handle_end_of_game(self):
         """Handle EndOfGame phase"""
+        try:
+            self._record_game_result_async()
+        except Exception as exc:  # noqa: BLE001
+            log.debug(f"[Kaleido] could not start result recorder: {exc}")
         try:
             from ui.core.user_interface import get_user_interface
             user_interface = get_user_interface(self.state, self.skin_scraper)

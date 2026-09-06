@@ -102,6 +102,70 @@ class RandomizationHandler:
             self._randomization_started = False
             return False
     
+    def apply_specific_skin(self, lcu, skin_id: int) -> tuple[bool, str]:
+        """Kaleido: select a given skin/chroma id for injection (same flow as the dice)."""
+        selection = self.find_selection_by_id(skin_id)
+        if not selection:
+            return False, "Skin not available for this champion"
+        if self._randomization_started:
+            return False, "Selection already in progress"
+        self._randomization_started = True
+        champion_id = self.state.locked_champ_id
+        base_skin_id = champion_id * 1000 if champion_id else None
+        self._preset_selection = selection
+        try:
+            if base_skin_id and self.state.selected_skin_id != base_skin_id and lcu:
+                if not lcu.set_my_selection_skin(base_skin_id):
+                    log.warning("[Kaleido] Could not force base skin before applying a specific skin")
+            self._start_randomization()
+        finally:
+            self._preset_selection = None
+        return (True, selection[0]) if self.state.random_mode_active else (False, "Could not apply the skin")
+
+    def find_selection_by_id(self, skin_id: int) -> Optional[Tuple[str, int]]:
+        """Resolve a skin or chroma id of the current champion to (name, id)."""
+        if not self.skin_scraper or not self.skin_scraper.cache or not self.skin_scraper.cache.skins:
+            return None
+        try:
+            skin_id = int(skin_id)
+        except (TypeError, ValueError):
+            return None
+        for skin in self.skin_scraper.cache.skins:
+            if skin.get("skinId") == skin_id:
+                return (skin.get("skinName", "") or f"Skin {skin_id}", skin_id)
+        for skin in self.skin_scraper.cache.skins:
+            try:
+                for chroma in self.skin_scraper.get_chromas_for_skin(skin.get("skinId")) or []:
+                    if chroma.get("id") == skin_id:
+                        return (chroma.get("name") or f"{skin.get('skinName', '')} Chroma", skin_id)
+            except Exception:
+                continue
+        return None
+
+    def _candidate_skin_ids_for_mode(self, champion_id: Optional[int]) -> Optional[set]:
+        """Return the allowed skin/chroma ids for the configured random mode, or None for 'all'."""
+        try:
+            from config import get_config_option
+            mode = (get_config_option("General", "random_mode", "all") or "all").lower()
+        except Exception:
+            mode = "all"
+        if mode == "all" or not champion_id:
+            return None
+        ids: set = set()
+        if mode == "favorites":
+            try:
+                from utils.core.favorites import favorites_for_champion
+                ids = set(favorites_for_champion(champion_id))
+            except Exception:
+                ids = set()
+        elif mode == "profiles":
+            try:
+                from utils.core import profiles as skin_profiles
+                ids = set(skin_profiles.skin_ids_for_champion_across_profiles(champion_id))
+            except Exception:
+                ids = set()
+        return ids or None  # empty pool -> fall back to all skins
+
     def _start_randomization(self):
         """Start the randomization sequence"""
         # Check if randomization was cancelled
@@ -125,8 +189,9 @@ class RandomizationHandler:
         except Exception:
             pass
         
-        # Select random skin
-        random_selection = self.select_random_skin()
+        # Select random skin (or the preset one for Kaleido's apply-skin)
+        preset = getattr(self, "_preset_selection", None)
+        random_selection = preset if preset else self.select_random_skin()
         if random_selection:
             random_skin_name, random_skin_id = random_selection
             self.state.random_skin_name = random_skin_name
@@ -197,6 +262,16 @@ class RandomizationHandler:
             log.warning("[UI] No non-base skins available for random selection")
             return None
         
+        # Kaleido: restrict the pool to favorites / profile skins when configured
+        pool_ids = self._candidate_skin_ids_for_mode(champion_id)
+        if pool_ids:
+            direct = [self.find_selection_by_id(sid) for sid in pool_ids]
+            direct = [d for d in direct if d and d[1] != base_champion_skin_id]
+            if direct:
+                chosen = random.choice(direct)
+                log.info(f"[UI] Random selection restricted to {len(direct)} skin(s): '{chosen[0]}' (ID: {chosen[1]})")
+                return chosen
+
         # Select random skin
         selected_skin = random.choice(available_skins)
         skin_id = selected_skin.get('skinId')

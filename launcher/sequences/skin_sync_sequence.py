@@ -6,6 +6,7 @@ Handles skin download and verification sequence
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Optional
 
 from state import AppStatus
@@ -55,6 +56,15 @@ class SkinSyncSequence:
         dialog.pump_messages()
         updater_log.info("Downloading skins and previews (incremental=%s).", not needs_full_download)
 
+        # Kaleido: remember which skin files exist before the sync to report new ones afterwards
+        try:
+            from utils.core.paths import get_skins_dir
+            _skins_root = get_skins_dir()
+            _before = {p.relative_to(_skins_root).as_posix() for p in _skins_root.rglob("*")
+                       if p.is_file() and p.suffix.lower() in (".zip", ".fantome")} if _skins_root.exists() else set()
+        except Exception:
+            _before, _skins_root = set(), None
+
         def skin_progress(percent: int, message: Optional[str] = None) -> None:
             if message:
                 dialog.set_status(message)
@@ -89,6 +99,25 @@ class SkinSyncSequence:
         status_checker.update_status(force=True)
 
         if success:
+            # Kaleido: write a marker with the newly downloaded skins for the tray notification
+            try:
+                if _skins_root is not None and not needs_full_download:
+                    _after = {p.relative_to(_skins_root).as_posix() for p in _skins_root.rglob("*")
+                              if p.is_file() and p.suffix.lower() in (".zip", ".fantome")}
+                    _new = sorted(_after - _before)
+                    if _new:
+                        import json as _json
+                        from utils.core.paths import get_state_dir
+                        _state_dir = get_state_dir()
+                        _state_dir.mkdir(parents=True, exist_ok=True)
+                        _sample = [Path(x).stem.replace("_", " ") for x in _new[:5]]
+                        (_state_dir / "new_skins.json").write_text(
+                            _json.dumps({"count": len(_new), "sample": _sample, "ts": int(time.time())}),
+                            encoding="utf-8",
+                        )
+                        updater_log.info(f"Kaleido: {len(_new)} new skin file(s) downloaded")
+            except Exception as exc:  # noqa: BLE001
+                updater_log.debug(f"Kaleido new-skins marker failed: {exc}")
             status_checker.mark_download_process_complete()
             dialog.set_status("Skins ready.")
             dialog.set_progress(100)
