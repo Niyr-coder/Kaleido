@@ -1004,8 +1004,11 @@
     el.innerHTML = `
       <div class="party-section-title">${kt("Friend group")}: <span class="party-group-name">${escapeHtml(g.active)}</span></div>
       ${status}
+      <div class="token-container" style="margin-top:6px;">
+        <input type="text" class="token-input" id="party-group-code-display" readonly value="${escapeHtml(g.code || "")}" placeholder="KGRP1:…">
+        <button class="copy-btn" id="party-group-copy-btn" onclick="window.kaleidoParty.copyGroupCode()">${kt("Copy")}</button>
+      </div>
       <div class="party-group-actions">
-        <button class="peer-copy" onclick="window.kaleidoParty.copyGroupCode()">${kt("Copy code")}</button>
         <button class="peer-copy danger" onclick="window.kaleidoParty.leaveGroup()">${kt("Leave group")}</button>
       </div>
       <label class="party-check"><input type="checkbox" ${g.auto ? "checked" : ""} onchange="window.kaleidoParty.setAuto(this.checked)"> ${kt("Join automatically when Kaleido starts")}</label>
@@ -1091,7 +1094,21 @@
       sendBridgeMessage({ type: "party-group-join", code });
     },
     leaveGroup() { sendBridgeMessage({ type: "party-group-leave" }); },
-    copyGroupCode() { sendBridgeMessage({ type: "party-group-code" }); },
+    copyGroupCode() {
+      const input = document.getElementById("party-group-code-display");
+      const btn = document.getElementById("party-group-copy-btn");
+      const code = input ? input.value : "";
+      if (!code) { sendBridgeMessage({ type: "party-group-code" }); return; }
+      try { input.focus(); input.select(); } catch (e) {}
+      copyText(code).then((ok) => {
+        if (!ok) { try { document.execCommand("copy"); ok = true; } catch (e) {} }
+        if (btn) {
+          btn.textContent = ok ? kt("Copied!") : kt("Copy");
+          if (ok) btn.classList.add("copied");
+          setTimeout(() => { btn.textContent = kt("Copy"); btn.classList.remove("copied"); }, 2000);
+        }
+      });
+    },
     setAuto(enabled) { sendBridgeMessage({ type: "party-group-auto", enabled: !!enabled }); },
     async invite(summonerId) {
       try {

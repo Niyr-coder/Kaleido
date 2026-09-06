@@ -150,6 +150,22 @@ class InjectionTrigger:
             log.error("=" * LOG_SEPARATOR_WIDTH)
             return
         
+        # Kaleido: "pause next game" from the panel / tray
+        if getattr(self.state, "pause_next_injection", False):
+            self.state.pause_next_injection = False
+            self.state.last_hover_written = True
+            log.info("=" * LOG_SEPARATOR_WIDTH)
+            log.info("INJECTION SKIPPED - Kaleido paused for this game (panel/tray)")
+            log.info("=" * LOG_SEPARATOR_WIDTH)
+            try:
+                ui_thread = getattr(self.state, "ui_skin_thread", None)
+                handler = getattr(ui_thread, "message_handler", None)
+                if handler and hasattr(handler, "_send_toast"):
+                    handler._send_toast("Kaleido paused: playing without skins this game", "info")
+            except Exception:
+                pass
+            return
+
         # Check if custom mod is selected for this skin (before logging)
         ui_skin_id = self.state.last_hovered_skin_id
         locked_champ_id = self.state.locked_champ_id or self.state.hovered_champ_id

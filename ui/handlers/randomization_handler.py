@@ -262,6 +262,28 @@ class RandomizationHandler:
             log.warning("[UI] No non-base skins available for random selection")
             return None
         
+        # Kaleido: blacklist + variety mode (do not repeat until every skin was used)
+        try:
+            from config import get_config_bool, RANDOM_VARIETY_DEFAULT
+            from utils.core import blacklist as _bl
+            banned = set(_bl.blacklist_for_champion(champion_id)) if champion_id else set()
+            if banned:
+                available_skins = [s for s in available_skins if s.get('skinId') not in banned] or available_skins
+            if champion_id and get_config_bool("General", "random_variety", RANDOM_VARIETY_DEFAULT):
+                from utils.core import skin_history
+                used_bases = set()
+                for used in skin_history.recent_skins_for_champion(champion_id, limit=500):
+                    info = chroma_id_map.get(used) if chroma_id_map else None
+                    used_bases.add(int(info.get("skinId")) if isinstance(info, dict) and info.get("skinId") else int(used))
+                fresh = [s for s in available_skins if s.get('skinId') not in used_bases]
+                if fresh:
+                    available_skins = fresh
+                    log.info(f"[UI] Variety mode: {len(fresh)} unused skin(s) left for champion {champion_id}")
+                else:
+                    log.info("[UI] Variety mode: every skin was used, starting over")
+        except Exception as exc:  # noqa: BLE001
+            log.debug(f"[UI] variety/blacklist filter failed: {exc}")
+
         # Kaleido: restrict the pool to favorites / profile skins when configured
         pool_ids = self._candidate_skin_ids_for_mode(champion_id)
         if pool_ids:
@@ -309,6 +331,13 @@ class RandomizationHandler:
                     'type': 'chroma'
                 })
             
+            # Kaleido: "random chroma" never returns the base skin when chromas exist
+            try:
+                from config import get_config_bool, RANDOM_CHROMA_DEFAULT
+                if get_config_bool("General", "random_chroma", RANDOM_CHROMA_DEFAULT) and len(all_options) > 1:
+                    all_options = [o for o in all_options if o['type'] == 'chroma']
+            except Exception:
+                pass
             # Select random option from base + chromas
             selected_option = random.choice(all_options)
             selected_name = selected_option['name']

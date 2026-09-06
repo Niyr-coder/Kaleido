@@ -240,6 +240,22 @@ class TrayManager:
         except Exception:
             return "Skins descargadas: -"
 
+    def _pause_label(self, item=None) -> str:
+        state = getattr(self, "shared_state", None)
+        paused = bool(getattr(state, "pause_next_injection", False)) if state else False
+        return "Reactivar Kaleido (siguiente partida)" if paused else "Pausar Kaleido una partida"
+
+    def _on_toggle_pause(self, icon, item):
+        state = getattr(self, "shared_state", None)
+        if state is None:
+            return
+        state.pause_next_injection = not bool(getattr(state, "pause_next_injection", False))
+        log.info(f"[Kaleido] Pause next injection (tray): {state.pause_next_injection}")
+        try:
+            self.icon.update_menu()
+        except Exception:
+            pass
+
     def notify(self, title: str, message: str) -> None:
         """Show a Windows notification from the tray icon (best-effort)."""
         try:
@@ -278,6 +294,7 @@ class TrayManager:
             pystray.MenuItem(self._status_last_skin, None, enabled=False),
             pystray.MenuItem(self._status_skins_count, None, enabled=False),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(self._pause_label, self._on_toggle_pause),
             pystray.MenuItem("Open Mods Folder", self._on_open_mods),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._on_quit),

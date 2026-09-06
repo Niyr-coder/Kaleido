@@ -148,3 +148,14 @@ def on_historic_written(champion_id: int, value: Union[int, str]) -> None:
         profile = None
     record_injection(champion_id, value, profile=profile,
                      game_mode=_context.get("gameMode"), queue_id=_context.get("queueId"))
+    # chroma memory: a chroma injection is remembered for its base skin
+    if isinstance(value, int):
+        try:
+            from utils.core import chroma_memory
+            chroma_memory.record_injected(value, _context.get("chromaMap"))
+        except Exception:
+            pass
+
+
+def set_chroma_map(chroma_id_map) -> None:
+    _context["chromaMap"] = chroma_id_map

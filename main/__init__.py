@@ -849,6 +849,7 @@ def run_league_unlock(args: Optional[argparse.Namespace] = None,
             timeout_thread.start()
         
         tray_manager.quit_callback = updated_tray_quit_callback
+        tray_manager.shared_state = state  # Kaleido: tray menu reads pause state / profile
     
     # Initialize threads (this starts the WebSocket server)
     thread_manager, t_phase, t_ui, t_ws, t_lcu_monitor = initialize_threads(

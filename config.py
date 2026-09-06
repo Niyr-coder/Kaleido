@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 # APPLICATION METADATA
 # =============================================================================
 
-APP_VERSION = "1.2.23"                          # Application version
+APP_VERSION = "1.2.24"                          # Application version
 APP_USER_AGENT = f"Rose/{APP_VERSION}"  # User-Agent header for HTTP requests
 
 _CONFIG = configparser.ConfigParser()
@@ -342,6 +342,9 @@ ANALYTICS_ENABLED = True  # Hard switch. The user toggle is config.ini [General]
 ANALYTICS_USER_DEFAULT = False  # Default for the in-client "anonymous telemetry" toggle (opt-in)
 AUTO_UPDATE_USER_DEFAULT = True  # Default for the in-client "check for updates" toggle
 FORCE_UPDATE_USER_DEFAULT = True  # Default for "install updates automatically without asking" (only when idle)
+RANDOM_VARIETY_DEFAULT = False   # dice never repeats a skin until all were used (per champion)
+RANDOM_CHROMA_DEFAULT = False    # dice always picks a chroma when the skin has them
+REMEMBER_CHROMA_DEFAULT = True   # inject the chroma last used with a skin when hovering its base skin
 UNSAFE_UPDATE_PHASES = {"ChampSelect", "FINALIZATION", "GameStart", "InProgress", "Matchmaking", "ReadyCheck"}
 ANALYTICS_TIMEOUT_S = 30  # Request timeout in seconds
 

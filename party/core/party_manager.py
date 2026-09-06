@@ -59,6 +59,7 @@ class PartyManager:
         self._on_event: Optional[Callable[[dict], None]] = None            # relay event received
         self._on_peer_skin: Optional[Callable[[int, str, SkinSelection], None]] = None
         self._on_room_changed: Optional[Callable[[dict, dict], None]] = None
+        self._on_peer_online: Optional[Callable[[int, str], None]] = None
 
     @property
     def enabled(self) -> bool:
@@ -281,10 +282,11 @@ class PartyManager:
 
     # ─── Kaleido social API ──────────────────────────────────────────────
 
-    def set_social_hooks(self, on_event=None, on_peer_skin=None, on_room_changed=None):
+    def set_social_hooks(self, on_event=None, on_peer_skin=None, on_room_changed=None, on_peer_online=None):
         self._on_event = on_event
         self._on_peer_skin = on_peer_skin
         self._on_room_changed = on_room_changed
+        self._on_peer_online = on_peer_online
 
     @property
     def relay_connected(self) -> bool:
@@ -337,6 +339,11 @@ class PartyManager:
                     connected=True,
                     connection_state="connected",
                 )
+                if self._on_peer_online and self.party_state.group_name:
+                    try:
+                        self._on_peer_online(sid, name)
+                    except Exception as e:
+                        log.debug(f"[PARTY] peer online hook error: {e}")
             else:
                 self.party_state.peers[sid].summoner_name = name
                 self.party_state.peers[sid].connected = True

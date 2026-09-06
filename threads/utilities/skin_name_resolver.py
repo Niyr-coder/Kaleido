@@ -151,6 +151,21 @@ class SkinNameResolver:
             if is_base_skin(skin_id, chroma_id_map):
                 name = f"skin_{skin_id}"
                 log.debug(f"[INJECT] Using base skin ID from state: '{name}' (ID: {skin_id})")
+                # Kaleido: remembered chroma for this skin (unless the wheel was used in this champ select)
+                try:
+                    from config import get_config_bool, REMEMBER_CHROMA_DEFAULT
+                    from utils.core.chroma_memory import remembered_chroma
+                    explicit = getattr(self.state, "chroma_choice_generation", -1) == getattr(self.state, "champ_select_generation", 0)
+                    if get_config_bool("General", "remember_chroma", REMEMBER_CHROMA_DEFAULT) and not explicit \
+                            and getattr(self.state, "selected_chroma_id", None) is None:
+                        remembered = remembered_chroma(int(skin_id))
+                        if remembered and chroma_id_map and remembered in chroma_id_map:
+                            info = chroma_id_map.get(remembered) or {}
+                            if int(info.get("skinId") or 0) == int(skin_id):
+                                name = f"chroma_{remembered}"
+                                log.info(f"[Kaleido] Using remembered chroma {remembered} for skin {skin_id}")
+                except Exception as exc:  # noqa: BLE001
+                    log.debug(f"[Kaleido] chroma memory lookup failed: {exc}")
             else:
                 name = f"chroma_{skin_id}"
                 log.debug(f"[INJECT] Using chroma ID from state: '{name}' (chroma: {skin_id})")

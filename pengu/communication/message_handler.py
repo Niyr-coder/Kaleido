@@ -27,6 +27,9 @@ from config import (
     AUTO_UPDATE_USER_DEFAULT,
     FORCE_UPDATE_USER_DEFAULT,
     UNSAFE_UPDATE_PHASES,
+    RANDOM_VARIETY_DEFAULT,
+    RANDOM_CHROMA_DEFAULT,
+    REMEMBER_CHROMA_DEFAULT,
 )
 from injection.mods.storage import ModStorageService
 from utils.core.paths import get_user_data_dir, get_asset_path, get_injection_dir, open_folder_in_explorer
@@ -270,6 +273,22 @@ class MessageHandler:
         elif payload_type in ("party-group-create", "party-group-join", "party-group-leave",
                               "party-group-auto", "party-group-code", "party-group-select"):
             self._handle_party_group(payload_type, payload)
+        elif payload_type == "blacklist-request":
+            self._handle_blacklist(payload, "list")
+        elif payload_type == "blacklist-toggle":
+            self._handle_blacklist(payload, "toggle")
+        elif payload_type == "blacklist-remove":
+            self._handle_blacklist(payload, "remove")
+        elif payload_type == "apply-favorite":
+            self._handle_apply_favorite(payload)
+        elif payload_type == "stats-request":
+            self._handle_stats_request(payload)
+        elif payload_type == "pause-toggle":
+            self._handle_pause_toggle(payload)
+        elif payload_type == "chroma-memory-request":
+            self._handle_chroma_memory(payload, "list")
+        elif payload_type == "chroma-memory-forget":
+            self._handle_chroma_memory(payload, "forget")
         elif payload_type in ("party-match-theme", "party-set-color", "party-apply-color",
                               "party-challenge", "party-challenge-respond", "party-roulette"):
             self._handle_party_social(payload_type, payload)
@@ -395,6 +414,8 @@ class MessageHandler:
             else:
                 # Fallback
                 self.shared_state.selected_chroma_id = chroma_id if chroma_id != 0 else None
+                # Kaleido: an explicit chroma choice (incl. base) disables the remembered chroma this champ select
+                self.shared_state.chroma_choice_generation = getattr(self.shared_state, "champ_select_generation", 0)
                 self.shared_state.last_hovered_skin_id = chroma_id
                 log.info(f"[SkinMonitor] Chroma selected (fallback): {chroma_name} (ID: {chroma_id})")
                 
@@ -450,6 +471,7 @@ class MessageHandler:
         """Handle settings request"""
         try:
             self._start_update_watch()
+            self._refresh_history_chroma_map()
             threshold = get_config_float("General", "injection_threshold", 0.5)
             monitor_auto_resume_timeout = get_config_float("General", "monitor_auto_resume_timeout", 60.0)
             autostart = is_registered_for_autostart()
@@ -475,6 +497,10 @@ class MessageHandler:
                 "autoUpdate": get_config_bool("General", "auto_update", AUTO_UPDATE_USER_DEFAULT),
                 "randomMode": (get_config_option("General", "random_mode", "all") or "all"),
                 "forceUpdate": get_config_bool("General", "force_update", FORCE_UPDATE_USER_DEFAULT),
+                "randomVariety": get_config_bool("General", "random_variety", RANDOM_VARIETY_DEFAULT),
+                "randomChroma": get_config_bool("General", "random_chroma", RANDOM_CHROMA_DEFAULT),
+                "rememberChroma": get_config_bool("General", "remember_chroma", REMEMBER_CHROMA_DEFAULT),
+                "pauseNext": bool(getattr(self.shared_state, "pause_next_injection", False)),
                 "updateAvailable": bool((getattr(self, "_update_status", None) or {}).get("available")),
                 "updateVersion": (getattr(self, "_update_status", None) or {}).get("remoteVersion"),
                 "relayUrl": (get_config_option("General", "relay_url") or ""),
@@ -2184,6 +2210,9 @@ class MessageHandler:
                     return
                 set_config_option("General", "relay_url", relay_url)
                 log.info(f"[SkinMonitor] Party relay URL set to {relay_url or '(default)'} via settings panel")
+            for key, option in (("randomVariety", "random_variety"), ("randomChroma", "random_chroma"), ("rememberChroma", "remember_chroma")):
+                if key in payload:
+                    set_config_option("General", option, "true" if bool(payload.get(key)) else "false")
             if "forceUpdate" in payload:
                 force_update = bool(payload.get("forceUpdate"))
                 set_config_option("General", "force_update", "true" if force_update else "false")
@@ -2303,6 +2332,14 @@ class MessageHandler:
             "error": error,
         }
 
+    def _refresh_history_chroma_map(self) -> None:
+        try:
+            from utils.core import skin_history
+            cache = getattr(self.skin_scraper, "cache", None) if self.skin_scraper else None
+            skin_history.set_chroma_map(getattr(cache, "chroma_id_map", None) if cache is not None else None)
+        except Exception:
+            pass
+
     def _handle_profiles_request(self, payload: dict) -> None:
         try:
             self._send_response(json.dumps(self._build_profiles_payload()))
@@ -2375,10 +2412,12 @@ class MessageHandler:
             pass
         return None
 
-    def _send_toast(self, text: str, kind: str = "info") -> None:
+    def _send_toast(self, text: str, kind: str = "info", action: Optional[dict] = None) -> None:
         try:
-            self._send_response(json.dumps({"type": "kaleido-toast", "text": text, "kind": kind,
-                                            "timestamp": int(time.time() * 1000)}))
+            payload = {"type": "kaleido-toast", "text": text, "kind": kind, "timestamp": int(time.time() * 1000)}
+            if action:
+                payload["action"] = action
+            self._send_response(json.dumps(payload))
         except Exception:
             pass
 
@@ -2742,6 +2781,7 @@ class MessageHandler:
                 on_event=social.on_event,
                 on_peer_skin=social.on_peer_skin,
                 on_room_changed=social.on_room_changed,
+                on_peer_online=social.on_peer_online,
             )
         return social
 
@@ -2882,6 +2922,87 @@ class MessageHandler:
         if action in ("party-match-theme", "party-apply-color", "party-challenge", "party-roulette") or not ok:
             self._send_toast(message, "success" if ok else "error")
         self._send_response(json.dumps({"type": "party-action-result", "action": action, "success": ok, "message": message}))
+
+    # ------------------------------------------------------------------
+    # Kaleido: blacklist, favorite hotkeys, stats, pause, chroma memory
+    # ------------------------------------------------------------------
+    def _build_blacklist_payload(self) -> dict:
+        from utils.core import blacklist
+        entries = [{"championId": e["championId"], "skinId": e["skinId"], "skinName": self._skin_display_name(e["skinId"])}
+                   for e in blacklist.all_entries()]
+        return {"type": "blacklist-data", "entries": entries}
+
+    def _handle_blacklist(self, payload: dict, action: str) -> None:
+        from utils.core import blacklist
+        if action == "toggle":
+            champ_id = payload.get("championId") or self.shared_state.locked_champ_id or self.shared_state.hovered_champ_id
+            skin_id = payload.get("skinId") or getattr(self.shared_state, "ui_skin_id", None) \
+                or getattr(self.shared_state, "last_hovered_skin_id", None)
+            if not champ_id or not skin_id:
+                self._send_toast("Hover a skin first", "error")
+                return
+            try:
+                now = blacklist.toggle_blacklist(int(champ_id), int(skin_id))
+                name = self._skin_display_name(skin_id) or f"Skin {skin_id}"
+                self._send_toast(f"{'⛔ ' if now else '✓ '}{name}", "info" if now else "success")
+            except Exception as exc:  # noqa: BLE001
+                self._send_toast(str(exc), "error")
+        elif action == "remove":
+            try:
+                blacklist.remove_blacklist(int(payload.get("championId")), int(payload.get("skinId")))
+            except Exception as exc:  # noqa: BLE001
+                log.debug(f"[Blacklist] remove failed: {exc}")
+        self._send_response(json.dumps(self._build_blacklist_payload()))
+
+    def _handle_apply_favorite(self, payload: dict) -> None:
+        """Ctrl+1..5: apply the n-th favorite of the locked champion."""
+        from utils.core.favorites import favorites_for_champion
+        champ = self.shared_state.locked_champ_id
+        if not champ:
+            self._send_toast("Lock a champion first", "error")
+            return
+        try:
+            index = int(payload.get("index") or 0)
+        except (TypeError, ValueError):
+            index = 0
+        favs = favorites_for_champion(int(champ))
+        if index < 0 or index >= len(favs):
+            self._send_toast(f"No favorite #{index + 1} for this champion", "info")
+            return
+        self._apply_skin_id(favs[index], f"favorite-{index + 1}")
+
+    def _handle_stats_request(self, payload: dict) -> None:
+        from utils.core import skin_stats
+        data = skin_stats.compute()
+        def decorate(entry):
+            if entry and entry.get("skinId") is not None:
+                entry["skinName"] = self._skin_display_name(entry["skinId"])
+            return entry
+        for key in ("lucky", "unlucky"):
+            data[key] = decorate(data.get(key))
+        data["mostPlayed"] = [decorate(e) for e in data.get("mostPlayed", [])]
+        data["type"] = "stats-data"
+        self._send_response(json.dumps(data))
+
+    def _handle_pause_toggle(self, payload: dict) -> None:
+        current = bool(getattr(self.shared_state, "pause_next_injection", False))
+        value = bool(payload.get("enabled")) if "enabled" in payload else not current
+        self.shared_state.pause_next_injection = value
+        log.info(f"[Kaleido] Pause next injection: {value}")
+        self._send_toast("Kaleido paused for the next game" if value else "Kaleido active again", "info" if value else "success")
+        self._send_response(json.dumps({"type": "pause-state", "pauseNext": value}))
+
+    def _handle_chroma_memory(self, payload: dict, action: str) -> None:
+        from utils.core import chroma_memory
+        if action == "forget":
+            try:
+                chroma_memory.forget(int(payload.get("baseSkinId")))
+            except Exception as exc:  # noqa: BLE001
+                log.debug(f"[ChromaMemory] forget failed: {exc}")
+        entries = []
+        for e in chroma_memory.all_entries():
+            entries.append({**e, "skinName": self._skin_display_name(e["baseSkinId"]), "chromaName": self._skin_display_name(e["chromaId"])})
+        self._send_response(json.dumps({"type": "chroma-memory-data", "entries": entries}))
 
     def _handle_skin_detection(self, payload: dict) -> None:
         """Handle skin detection message"""

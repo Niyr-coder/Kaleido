@@ -21,6 +21,13 @@ original sigue aplicando.
 - **Skins recientes con atajos.** Ctrl+← y Ctrl+→ en la selección de campeón recorren las últimas skins usadas con ese campeón.
 - **Historial de partidas.** Cada skin inyectada queda registrada con modo de juego, perfil y resultado (victoria, derrota o remake) cuando el cliente lo informa. Se ve en el panel y se puede limpiar.
 - **Exportar e importar perfiles.** Un código `KPROF1:...` que se copia al portapapeles y que un amigo pega en su panel.
+- **Modo variedad y chroma aleatorio.** El dado puede no repetir skin hasta usarlas todas y elegir siempre un chroma cuando la skin los tiene.
+- **Pausar Kaleido una partida.** Botón en el panel y en la bandeja: la siguiente partida va sin inyección y luego vuelve a la normalidad.
+- **Lista negra.** Ctrl+B sobre una skin en la selección la veta: no sale en el dado, la ruleta, la temática ni se acepta en retos.
+- **Favoritas con Ctrl+1 a Ctrl+5** en la selección de campeón.
+- **Tus estadísticas.** Skin de la suerte y skin gafe con tu historial local (solo partidas con resultado, nada se comparte).
+- **Chroma recordado por skin.** El chroma con el que jugaste cada skin se aplica solo la próxima vez, salvo que abras la rueda de chromas en esa selección.
+- **Aviso de amigo en línea.** Cuando alguien del grupo abre Kaleido aparece un aviso con botón para invitarle al lobby.
 - **Grupo de amigos permanente.** Crea un grupo en el panel Party, comparte su código una vez y Kaleido se une solo al abrirse. Ves quién está en línea, con un botón para invitarle al lobby. Ya no hacen falta tokens por sesión.
 - **Temática compartida.** Botón "Igualar tema" junto a cada amigo (o Ctrl+T en la selección): si él juega Guardiana Estelar y tu campeón tiene una, se te aplica. Cuando un amigo elige una skin temática que tu campeón también tiene, aparece un aviso.
 - **Color de party.** Un color para todos: cada uno pulsa "Aplicar color" y Kaleido elige el chroma de su skin más parecido a ese color.

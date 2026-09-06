@@ -90,6 +90,8 @@ class SharedState:
     assigned_position: Optional[str] = None  # Role assigned in champ select (TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY)
     auto_profile_generation: int = -1  # champ_select_generation for which the automatic profile was applied
     auto_profile_name: Optional[str] = None  # Profile chosen automatically for the current champ select
+    pause_next_injection: bool = False       # Kaleido: skip injection for the next game
+    chroma_choice_generation: int = -1       # champ_select_generation in which the player used the chroma wheel
 
     # Historic mode (remember last injected unowned skin per champion)
     historic_mode_active: bool = False  # Tracks if HistoricMode is active

@@ -201,6 +201,35 @@
       "Kaleido {version} is ready. You have {local}.": "Kaleido {version} está lista. Tienes la {local}.",
       "Later": "Más tarde",
       "Updating to Kaleido {version} in {seconds} s": "Actualizando a Kaleido {version} en {seconds} s",
+      "Variety mode: never repeat a skin until all were used": "Modo variedad: no repetir skin hasta usarlas todas",
+      "Always pick a chroma when the skin has them": "Elegir siempre un chroma si la skin los tiene",
+      "Remember the chroma used with each skin": "Recordar el chroma que usas con cada skin",
+      "Pause Kaleido for the next game": "Pausar Kaleido la siguiente partida",
+      "Kaleido is paused for the next game": "Kaleido está en pausa para la siguiente partida",
+      "Resume": "Reactivar",
+      "Pause info": "Información de la pausa",
+      "The next game is played without injecting any skin. Kaleido stays open and goes back to normal afterwards.": "La siguiente partida se juega sin inyectar ninguna skin. Kaleido sigue abierto y vuelve a la normalidad después.",
+      "Blacklist:": "Lista negra:",
+      "Blacklist info": "Información de la lista negra",
+      "Press Ctrl+B while hovering a skin in champion select to blacklist it. Blacklisted skins are never picked by the dice, the roulette, theme matching or accepted from a challenge.": "Pulsa Ctrl+B mientras pasas el cursor por una skin en la selección de campeón para vetarla. Las skins vetadas nunca salen en el dado, la ruleta, la temática ni se aceptan en un reto.",
+      "No blacklisted skins.": "No hay skins vetadas.",
+      "Remove from blacklist": "Quitar de la lista negra",
+      "Remembered chromas:": "Chromas recordados:",
+      "Remembered chromas info": "Información de los chromas recordados",
+      "The chroma you last played with each skin is applied again when you pick that skin, unless you open the chroma wheel in that champion select.": "El chroma con el que jugaste cada skin se vuelve a aplicar al elegirla, salvo que abras la rueda de chromas en esa selección.",
+      "No remembered chromas yet.": "Todavía no hay chromas recordados.",
+      "Forget": "Olvidar",
+      "Your stats:": "Tus estadísticas:",
+      "Stats info": "Información de estadísticas",
+      "Wins per skin from your local history. Only games with a recorded result count. Nothing is shared.": "Victorias por skin según tu historial local. Solo cuentan partidas con resultado registrado. No se comparte nada.",
+      "Not enough games yet.": "Todavía no hay partidas suficientes.",
+      "Lucky skin": "Skin de la suerte",
+      "Unlucky skin": "Skin gafe",
+      "Most played": "Más jugadas",
+      "{wins}/{games} games · {rate}%": "{wins}/{games} partidas · {rate}%",
+      "Overall: {wins}/{games} · {rate}%": "Global: {wins}/{games} · {rate}%",
+      "(needs {n} games)": "(necesita {n} partidas)",
+      "Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme · Ctrl+B blacklist · Ctrl+1…5 apply favorites": "Atajos en la selección de campeón: Ctrl+← / Ctrl+→ recorre skins recientes · Ctrl+F marca favorita · Ctrl+T iguala la temática de un amigo · Ctrl+B veta la skin · Ctrl+1…5 aplica tus favoritas",
       "Restarting Kaleido to install the update…": "Reiniciando Kaleido para instalar la actualización…",
     },
   };
@@ -1448,6 +1477,10 @@
       autoUpdate: payload.autoUpdate === undefined ? true : !!payload.autoUpdate,
       randomMode: payload.randomMode || "all",
       forceUpdate: payload.forceUpdate === undefined ? true : !!payload.forceUpdate,
+      randomVariety: !!payload.randomVariety,
+      randomChroma: !!payload.randomChroma,
+      rememberChroma: payload.rememberChroma === undefined ? true : !!payload.rememberChroma,
+      pauseNext: !!payload.pauseNext,
       relayUrl: payload.relayUrl || "",
       relayConfigured: !!payload.relayConfigured,
     };
@@ -2559,18 +2592,69 @@
     randomSelect.style.marginTop = "8px";
     randomSelect.style.width = "100%";
     randomSection.appendChild(randomSelect);
+    const mkCheck = (id, label, checked) => {
+      const wrap = document.createElement("div");
+      wrap.className = "settings-checkbox-wrapper";
+      wrap.style.marginTop = "6px";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.className = "settings-checkbox"; cb.id = id; cb.checked = !!checked;
+      wrap.appendChild(cb);
+      const txt = document.createElement("span");
+      txt.textContent = label;
+      wrap.appendChild(txt);
+      return wrap;
+    };
+    randomSection.appendChild(mkCheck("variety-checkbox", t("Variety mode: never repeat a skin until all were used"), false));
+    randomSection.appendChild(mkCheck("randomchroma-checkbox", t("Always pick a chroma when the skin has them"), false));
+    randomSection.appendChild(mkCheck("rememberchroma-checkbox", t("Remember the chroma used with each skin"), true));
     form.appendChild(randomSection);
+
+    // Pause next game (Kaleido)
+    const pauseSection = document.createElement("div");
+    pauseSection.className = "settings-section";
+    const pauseLabel = document.createElement("label");
+    pauseLabel.className = "settings-label";
+    const pauseLabelText = document.createElement("span");
+    pauseLabelText.textContent = t("Pause Kaleido for the next game");
+    pauseLabel.appendChild(createTooltipButton(
+      t("The next game is played without injecting any skin. Kaleido stays open and goes back to normal afterwards."),
+      t("Pause info")
+    ));
+    pauseLabel.appendChild(pauseLabelText);
+    pauseSection.appendChild(pauseLabel);
+    const pauseRow = document.createElement("div");
+    pauseRow.className = "kaleido-profiles-row";
+    const pauseBtn = document.createElement("button");
+    pauseBtn.type = "button";
+    pauseBtn.className = "kaleido-btn";
+    pauseBtn.id = "kaleido-pause-btn";
+    pauseBtn.textContent = t("Pause Kaleido for the next game");
+    pauseBtn.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (bridge) bridge.send({ type: "pause-toggle" });
+    });
+    pauseRow.appendChild(pauseBtn);
+    const pauseStatus = document.createElement("span");
+    pauseStatus.id = "kaleido-pause-status";
+    pauseStatus.className = "kaleido-hint";
+    pauseStatus.style.margin = "0";
+    pauseRow.appendChild(pauseStatus);
+    pauseSection.appendChild(pauseRow);
+    form.appendChild(pauseSection);
 
     // Skin profiles section (Kaleido)
     form.appendChild(createProfilesSection());
 
     // Favorites + history (Kaleido)
     form.appendChild(createFavoritesSection());
+    form.appendChild(createBlacklistSection());
+    form.appendChild(createChromaMemorySection());
     form.appendChild(createHistorySection());
+    form.appendChild(createStatsSection());
 
     const hotkeysHint = document.createElement("div");
     hotkeysHint.className = "kaleido-hint";
-    hotkeysHint.textContent = t("Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme");
+    hotkeysHint.textContent = t("Shortcuts in champion select: Ctrl+← / Ctrl+→ cycle recent skins · Ctrl+F favorite the hovered skin · Ctrl+T match a party friend's theme · Ctrl+B blacklist · Ctrl+1…5 apply favorites");
     form.appendChild(hotkeysHint);
 
     // Game path section
@@ -3032,6 +3116,206 @@
     requestProfiles();
     requestFavorites();
     requestHistory();
+    if (bridge) {
+      bridge.send({ type: "blacklist-request" });
+      bridge.send({ type: "chroma-memory-request" });
+      bridge.send({ type: "stats-request" });
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Pause / blacklist / chroma memory / stats (Kaleido)
+  // ---------------------------------------------------------------------
+  let blacklistState = { entries: [] };
+  let chromaMemoryState = { entries: [] };
+  let statsState = null;
+
+  function renderPauseButton(paused) {
+    const btn = document.getElementById("kaleido-pause-btn");
+    const status = document.getElementById("kaleido-pause-status");
+    if (!btn) return;
+    btn.textContent = paused ? t("Resume") : t("Pause Kaleido for the next game");
+    btn.classList.toggle("primary", paused);
+    if (status) status.textContent = paused ? t("Kaleido is paused for the next game") : "";
+  }
+
+  function handlePauseState(payload) { renderPauseButton(!!payload.pauseNext); }
+
+  function handleBlacklistData(payload) {
+    blacklistState = { entries: Array.isArray(payload.entries) ? payload.entries : [] };
+    loadChampionNames().then(() => renderBlacklistSection());
+    renderBlacklistSection();
+  }
+
+  function handleChromaMemoryData(payload) {
+    chromaMemoryState = { entries: Array.isArray(payload.entries) ? payload.entries : [] };
+    loadChampionNames().then(() => renderChromaMemorySection());
+    renderChromaMemorySection();
+  }
+
+  function handleStatsData(payload) {
+    statsState = payload;
+    loadChampionNames().then(() => renderStatsSection());
+    renderStatsSection();
+  }
+
+  function makeSection(id, labelText, info, infoLabel) {
+    const section = document.createElement("div");
+    section.className = "settings-section";
+    const label = document.createElement("label");
+    label.className = "settings-label";
+    const text = document.createElement("span");
+    text.textContent = labelText;
+    label.appendChild(createTooltipButtonGlobal(info, infoLabel));
+    label.appendChild(text);
+    section.appendChild(label);
+    const body = document.createElement("div");
+    body.id = id;
+    section.appendChild(body);
+    return section;
+  }
+
+  function createBlacklistSection() {
+    const s = makeSection("kaleido-blacklist-body", t("Blacklist:"),
+      t("Press Ctrl+B while hovering a skin in champion select to blacklist it. Blacklisted skins are never picked by the dice, the roulette, theme matching or accepted from a challenge."),
+      t("Blacklist info"));
+    renderBlacklistSection();
+    return s;
+  }
+
+  function createChromaMemorySection() {
+    const s = makeSection("kaleido-chroma-memory-body", t("Remembered chromas:"),
+      t("The chroma you last played with each skin is applied again when you pick that skin, unless you open the chroma wheel in that champion select."),
+      t("Remembered chromas info"));
+    renderChromaMemorySection();
+    return s;
+  }
+
+  function createStatsSection() {
+    const s = makeSection("kaleido-stats-body", t("Your stats:"),
+      t("Wins per skin from your local history. Only games with a recorded result count. Nothing is shared."),
+      t("Stats info"));
+    renderStatsSection();
+    return s;
+  }
+
+  function entryRow(championId, primary, secondary, buttons) {
+    const names = _championNames || {};
+    const item = document.createElement("div");
+    item.className = "kaleido-profile-entry";
+    const icon = document.createElement("img");
+    icon.className = "kaleido-profile-icon";
+    icon.src = `/lol-game-data/assets/v1/champion-icons/${championId}.png`;
+    icon.alt = "";
+    icon.onerror = function () { this.style.visibility = "hidden"; };
+    item.appendChild(icon);
+    const txt = document.createElement("div");
+    txt.className = "kaleido-profile-text";
+    const a = document.createElement("div");
+    a.className = "kaleido-profile-champ";
+    a.textContent = primary || (names[championId] || t("Champion {id}", { id: championId }));
+    const b = document.createElement("div");
+    b.className = "kaleido-profile-skin";
+    b.textContent = secondary || "";
+    txt.appendChild(a); txt.appendChild(b);
+    item.appendChild(txt);
+    (buttons || []).forEach((btn) => item.appendChild(btn));
+    return item;
+  }
+
+  function removeButton(title, onClick) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "kaleido-entry-remove";
+    remove.title = title;
+    remove.setAttribute("aria-label", title);
+    remove.textContent = "×";
+    remove.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onClick(); });
+    return remove;
+  }
+
+  function renderBlacklistSection() {
+    const body = document.getElementById("kaleido-blacklist-body");
+    if (!body) return;
+    body.innerHTML = "";
+    const names = _championNames || {};
+    const list = document.createElement("div");
+    list.className = "kaleido-profiles-list";
+    if (blacklistState.entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "kaleido-profiles-empty";
+      empty.textContent = t("No blacklisted skins.");
+      list.appendChild(empty);
+    } else {
+      blacklistState.entries.forEach((e) => {
+        list.appendChild(entryRow(e.championId, names[e.championId] || null, e.skinName || t("Skin {id}", { id: e.skinId }), [
+          removeButton(t("Remove from blacklist"), () => { if (bridge) bridge.send({ type: "blacklist-remove", championId: e.championId, skinId: e.skinId }); }),
+        ]));
+      });
+    }
+    body.appendChild(list);
+  }
+
+  function renderChromaMemorySection() {
+    const body = document.getElementById("kaleido-chroma-memory-body");
+    if (!body) return;
+    body.innerHTML = "";
+    const list = document.createElement("div");
+    list.className = "kaleido-profiles-list";
+    if (chromaMemoryState.entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "kaleido-profiles-empty";
+      empty.textContent = t("No remembered chromas yet.");
+      list.appendChild(empty);
+    } else {
+      chromaMemoryState.entries.forEach((e) => {
+        list.appendChild(entryRow(e.championId, e.skinName || t("Skin {id}", { id: e.baseSkinId }), e.chromaName || t("Chroma {id}", { id: e.chromaId }), [
+          removeButton(t("Forget"), () => { if (bridge) bridge.send({ type: "chroma-memory-forget", baseSkinId: e.baseSkinId }); }),
+        ]));
+      });
+    }
+    body.appendChild(list);
+  }
+
+  function renderStatsSection() {
+    const body = document.getElementById("kaleido-stats-body");
+    if (!body) return;
+    body.innerHTML = "";
+    const names = _championNames || {};
+    const st = statsState;
+    if (!st || !st.total || st.total.games === 0) {
+      const empty = document.createElement("div");
+      empty.className = "kaleido-profiles-empty";
+      empty.textContent = t("Not enough games yet.");
+      body.appendChild(empty);
+      return;
+    }
+    const overall = document.createElement("div");
+    overall.className = "kaleido-hint";
+    overall.style.textAlign = "left";
+    overall.textContent = t("Overall: {wins}/{games} · {rate}%", { wins: st.total.wins, games: st.total.games, rate: st.total.winrate });
+    body.appendChild(overall);
+    const list = document.createElement("div");
+    list.className = "kaleido-profiles-list";
+    const line = (e) => t("{wins}/{games} games · {rate}%", { wins: e.wins, games: e.games, rate: e.winrate });
+    const skinLabel = (e) => e.custom ? `${t("Custom mod")}: ${e.custom}` : (e.skinName || t("Skin {id}", { id: e.skinId }));
+    if (st.lucky) {
+      const badge = document.createElement("span"); badge.className = "kaleido-result win"; badge.textContent = t("Lucky skin");
+      list.appendChild(entryRow(st.lucky.championId, `${names[st.lucky.championId] || ""} · ${skinLabel(st.lucky)}`.replace(/^ · /, ""), line(st.lucky), [badge]));
+    } else {
+      const hint = document.createElement("div"); hint.className = "kaleido-profiles-empty";
+      hint.textContent = `${t("Lucky skin")} ${t("(needs {n} games)", { n: st.minGames || 3 })}`;
+      list.appendChild(hint);
+    }
+    if (st.unlucky) {
+      const badge = document.createElement("span"); badge.className = "kaleido-result loss"; badge.textContent = t("Unlucky skin");
+      list.appendChild(entryRow(st.unlucky.championId, `${names[st.unlucky.championId] || ""} · ${skinLabel(st.unlucky)}`.replace(/^ · /, ""), line(st.unlucky), [badge]));
+    }
+    (st.mostPlayed || []).slice(0, 8).forEach((e) => {
+      const badge = document.createElement("span"); badge.className = "kaleido-result " + (e.winrate >= 50 ? "win" : "pending"); badge.textContent = `${e.winrate}%`;
+      list.appendChild(entryRow(e.championId, `${names[e.championId] || ""} · ${skinLabel(e)}`.replace(/^ · /, ""), line(e), [badge]));
+    });
+    body.appendChild(list);
   }
 
   // ---------------------------------------------------------------------
@@ -3906,6 +4190,13 @@
     if (forceUpdateCheckbox) {
       forceUpdateCheckbox.checked = currentSettings.forceUpdate !== false;
     }
+    const varietyCb = document.getElementById("variety-checkbox");
+    if (varietyCb) varietyCb.checked = !!currentSettings.randomVariety;
+    const randomChromaCb = document.getElementById("randomchroma-checkbox");
+    if (randomChromaCb) randomChromaCb.checked = !!currentSettings.randomChroma;
+    const rememberCb = document.getElementById("rememberchroma-checkbox");
+    if (rememberCb) rememberCb.checked = currentSettings.rememberChroma !== false;
+    renderPauseButton(!!currentSettings.pauseNext);
     const relayInput = document.getElementById("relay-url-input");
     if (relayInput) {
       relayInput.value = currentSettings.relayUrl || "";
@@ -4009,6 +4300,9 @@
     const relayUrl = relayInput ? relayInput.value.trim() : "";
     const forceUpdateCheckbox = document.getElementById("forceupdate-checkbox");
     const forceUpdate = forceUpdateCheckbox ? forceUpdateCheckbox.checked : true;
+    const varietyCb = document.getElementById("variety-checkbox");
+    const randomChromaCb = document.getElementById("randomchroma-checkbox");
+    const rememberCb = document.getElementById("rememberchroma-checkbox");
 
     // Clamp threshold between 0.30 and 2.0
     const clampedThreshold = Math.max(0.3, Math.min(2.0, threshold));
@@ -4029,6 +4323,9 @@
       randomMode: randomMode,
       relayUrl: relayUrl,
       forceUpdate: forceUpdate,
+      randomVariety: varietyCb ? varietyCb.checked : false,
+      randomChroma: randomChromaCb ? randomChromaCb.checked : false,
+      rememberChroma: rememberCb ? rememberCb.checked : true,
     });
 
     log("info", "Settings save requested", {
@@ -5330,6 +5627,10 @@
       bridge.subscribe("update-check-result", handleUpdateCheckResult);
       bridge.subscribe("update-status", handleUpdateStatus);
       bridge.subscribe("update-forced", handleUpdateForced);
+      bridge.subscribe("blacklist-data", handleBlacklistData);
+      bridge.subscribe("chroma-memory-data", handleChromaMemoryData);
+      bridge.subscribe("stats-data", handleStatsData);
+      bridge.subscribe("pause-state", handlePauseState);
 
       // On every (re)connect, sync state
       bridge.onReady(() => {

@@ -68,7 +68,7 @@ class PartySocial:
         self._get_pm = get_party_manager
         self._apply_skin = apply_skin
         self._run_dice = run_dice
-        self._toast = send_toast
+        self._toast = lambda text, kind="info", action=None: (send_toast(text, kind, action) if action is not None else send_toast(text, kind))
         self._broadcast = broadcast_state
         self._schedule = schedule
         self._skin_name = skin_name
@@ -78,6 +78,7 @@ class PartySocial:
         self._line_names: Dict[int, str] = {}
         self._lock = threading.Lock()
         self._last_suggest: Dict[int, float] = {}
+        self._last_online: Dict[int, float] = {}
 
     # ------------------------------------------------------------------ data
     def _lcu(self):
@@ -219,7 +220,7 @@ class PartySocial:
             if not sel or not sel.skin_id:
                 continue
             lines = self.lines_for_skin(sel.chroma_id or sel.skin_id)
-            skins = self.skins_of_champion_in_lines(champ, lines)
+            skins = self._allowed(champ, self.skins_of_champion_in_lines(champ, lines))
             if skins:
                 candidates.append((peer, lines, skins))
         if not candidates:
@@ -232,6 +233,24 @@ class PartySocial:
             label = self.line_name(next(iter(shared))) if shared else self._name_of(target)
             return True, f"{label}: {self._name_of(target)}"
         return False, msg
+
+    def on_peer_online(self, summoner_id: int, name: str) -> None:
+        """A friend of the permanent group opened Kaleido: toast with an 'invite to lobby' action."""
+        try:
+            now = time.time()
+            if now - self._last_online.get(int(summoner_id), 0.0) < 120:
+                return
+            self._last_online[int(summoner_id)] = now
+            self._toast(f"{name} is online", "info", {"label": "Invite to lobby", "type": "invite", "summonerId": int(summoner_id)})
+        except Exception as exc:
+            log.debug(f"[SOCIAL] online toast failed: {exc}")
+
+    def _allowed(self, champion_id: int, skin_ids) -> list:
+        try:
+            from utils.core import blacklist
+            return blacklist.filter_allowed(champion_id, skin_ids, base_of=self.base_skin_id)
+        except Exception:
+            return list(skin_ids)
 
     def on_peer_skin(self, summoner_id: int, name: str, sel) -> None:
         """Suggest a matching theme when a friend picks a themed skin (throttled)."""
@@ -366,6 +385,8 @@ class PartySocial:
                 message = "Your friend picked a skin of another champion"
             elif not champ:
                 message = "Lock a champion first"
+            elif not self._allowed(champ, [int(pending["skin_id"])]):
+                message = "That skin is on your blacklist"
             else:
                 ok, msg = self._apply_skin(int(pending["skin_id"]), "challenge")
                 accepted = bool(ok)
@@ -402,7 +423,7 @@ class PartySocial:
         champ = self._my_champion()
         if mode == "theme" and champ and data.get("line_id") is not None:
             try:
-                skins = self.skins_of_champion_in_lines(champ, {int(data["line_id"])})
+                skins = self._allowed(champ, self.skins_of_champion_in_lines(champ, {int(data["line_id"])}))
             except (TypeError, ValueError):
                 skins = []
             if skins:

@@ -35,6 +35,15 @@
     "Party color cleared": "Color de party quitado",
     "Kaleido {version} available": "Kaleido {version} disponible",
     "Updating to Kaleido {version} in {seconds} s": "Actualizando a Kaleido {version} en {seconds} s",
+    "Kaleido paused: playing without skins this game": "Kaleido en pausa: esta partida va sin skins",
+    "Kaleido paused for the next game": "Kaleido en pausa para la siguiente partida",
+    "Kaleido active again": "Kaleido activo de nuevo",
+    "That skin is on your blacklist": "Esa skin está en tu lista negra",
+    "is online": "está en línea",
+    "No favorite #{n} for this champion": "No tienes favorita nº {n} para este campeón",
+    "Invite to lobby": "Invitar al lobby",
+    "Invitation sent": "Invitación enviada",
+    "Create a lobby first": "Crea un lobby primero",
     "color": "color", "red": "rojo", "blue": "azul", "green": "verde", "yellow": "amarillo", "purple": "morado",
     "pink": "rosa", "orange": "naranja", "white": "blanco", "black": "negro",
   };
@@ -81,10 +90,14 @@
     return layer;
   }
 
-  function showToast(text, kind) {
+  function showToast(text, kind, action) {
     try {
       const layer = ensureToastLayer();
       const el = document.createElement("div");
+      if (action && action.type === "invite") {
+        layer.style.pointerEvents = "none";
+        el.style.pointerEvents = "auto";
+      }
       const color = kind === "error" ? "#ff8a80" : kind === "success" ? "#f0e6d2" : "#cdbe91";
       const border = kind === "error" ? "#c0392b" : kind === "success" ? "#8b5cf6" : "#463714";
       el.textContent = text;
@@ -95,12 +108,34 @@
         "transition:opacity 160ms ease, transform 160ms ease", "transform:translateY(6px)",
         "max-width:420px", "text-align:center",
       ].join(";");
+      let lifetime = 2600;
+      if (action && action.type === "invite" && action.summonerId) {
+        lifetime = 8000;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = kt(action.label || "Invite to lobby");
+        btn.style.cssText = "margin-left:10px; background:#1e2328; border:1px solid #8b5cf6; color:#f0e6d2; font-family:'Beaufort for LOL', serif; font-size:11px; padding:2px 8px; cursor:pointer;";
+        btn.addEventListener("click", async (ev) => {
+          ev.preventDefault(); ev.stopPropagation();
+          try {
+            const r = await fetch("/lol-lobby/v2/lobby/invitations", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify([{ toSummonerId: Number(action.summonerId) }]),
+            });
+            btn.textContent = r.ok ? kt("Invitation sent") : kt("Create a lobby first");
+          } catch (e) {
+            btn.textContent = kt("Create a lobby first");
+          }
+          btn.disabled = true;
+        });
+        el.appendChild(btn);
+      }
       layer.appendChild(el);
       requestAnimationFrame(() => { el.style.opacity = "1"; el.style.transform = "translateY(0)"; });
       setTimeout(() => {
         el.style.opacity = "0"; el.style.transform = "translateY(6px)";
         setTimeout(() => el.remove(), 200);
-      }, 2600);
+      }, lifetime);
     } catch (e) {
       log("warn", "toast failed", e);
     }
@@ -132,6 +167,12 @@
     } else if ((e.key === "t" || e.key === "T") && !e.shiftKey) {
       bridge.send({ type: "party-match-theme" });
       handled = true;
+    } else if ((e.key === "b" || e.key === "B") && !e.shiftKey) {
+      bridge.send({ type: "blacklist-toggle" });
+      handled = true;
+    } else if (/^[1-5]$/.test(e.key)) {
+      bridge.send({ type: "apply-favorite", index: Number(e.key) - 1 });
+      handled = true;
     }
     if (handled) {
       e.preventDefault();
@@ -158,10 +199,14 @@
       if (cdMatch) text = kt("Updating to Kaleido {version} in {seconds} s").replace("{version}", cdMatch[1]).replace("{seconds}", cdMatch[2]);
       const colorMatch = text.match(/^(.*): color ([a-z]+)$/);
       if (colorMatch) text = `${colorMatch[1]}: ${kt("color")} ${kt(colorMatch[2])}`;
-      showToast(kt(text), payload.kind || "info");
+      const onlineMatch = text.match(/^(.*) is online$/);
+      if (onlineMatch) text = `${onlineMatch[1]} ${kt("is online")}`;
+      const favMatch = text.match(/^No favorite #([0-9]+) for this champion$/);
+      if (favMatch) text = kt("No favorite #{n} for this champion").replace("{n}", favMatch[1]);
+      showToast(kt(text), payload.kind || "info", payload.action || null);
     });
     document.addEventListener("keydown", onKeyDown, true);
-    log("info", "hotkeys ready (Ctrl+Left/Right recent skins, Ctrl+F favorite, Ctrl+T match party theme)");
+    log("info", "hotkeys ready (Ctrl+Left/Right recent skins, Ctrl+F favorite, Ctrl+T match party theme, Ctrl+B blacklist, Ctrl+1-5 favorites)");
   }
 
   if (typeof document === "undefined") return;
