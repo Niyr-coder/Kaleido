@@ -41,6 +41,18 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
+      - name: Write Party relay URL (from the KALEIDO_RELAY_URL secret, if set)
+        shell: pwsh
+        env:
+          KALEIDO_RELAY_URL: ${{ secrets.KALEIDO_RELAY_URL }}
+        run: |
+          if ($env:KALEIDO_RELAY_URL) {
+            "RELAY_URL = `"$($env:KALEIDO_RELAY_URL.TrimEnd('/'))`"`n" | Out-File -FilePath "party/network/relay_config.py" -Encoding utf8
+            "Relay URL baked into the build."
+          } else {
+            "No KALEIDO_RELAY_URL secret: Party mode will need relay_url in config.ini."
+          }
+
       - name: Build Pengu Loader + Kaleido + installer
         run: python scripts/build_all.py
 

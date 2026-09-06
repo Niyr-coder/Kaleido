@@ -23,7 +23,29 @@ try:
 except ImportError:
     _CONFIGURED_URL = ""
 
-RELAY_URL = os.environ.get("ROSE_RELAY_URL", _CONFIGURED_URL)
+# Kaleido: the relay Worker URL can come from (highest priority first)
+#   1. the ROSE_RELAY_URL environment variable
+#   2. config.ini  [General] relay_url   (editable from the settings panel)
+#   3. party/network/relay_config.py    (written by CI from the KALEIDO_RELAY_URL secret)
+#   4. DEFAULT_RELAY_URL below
+DEFAULT_RELAY_URL = ""
+
+
+def get_relay_url() -> str:
+    env_url = os.environ.get("ROSE_RELAY_URL", "").strip()
+    if env_url:
+        return env_url.rstrip("/")
+    try:
+        from config import get_config_option
+        cfg = (get_config_option("General", "relay_url") or "").strip()
+        if cfg:
+            return cfg.rstrip("/")
+    except Exception:
+        pass
+    return (_CONFIGURED_URL or DEFAULT_RELAY_URL).strip().rstrip("/")
+
+
+RELAY_URL = get_relay_url()  # kept for callers that import the constant
 PING_INTERVAL = 25.0
 
 
@@ -63,11 +85,16 @@ class PartyRelay:
 
     async def connect(self, timeout: float = 15.0) -> bool:
         """Connect to the relay room."""
-        if not RELAY_URL:
-            log.warning("[RELAY] No relay URL configured")
+        relay_url = get_relay_url()
+        if not relay_url:
+            log.warning("[RELAY] No relay URL configured (set relay_url in config.ini or the settings panel)")
             return False
+        if relay_url.startswith("http://"):
+            relay_url = "ws://" + relay_url[len("http://"):]
+        elif relay_url.startswith("https://"):
+            relay_url = "wss://" + relay_url[len("https://"):]
 
-        url = f"{RELAY_URL}/room?key={self.room_key}"
+        url = f"{relay_url}/room?key={self.room_key}"
         log.info(f"[RELAY] Connecting to room {self.room_key[:8]}...")
 
         try:
