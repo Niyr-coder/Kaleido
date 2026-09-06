@@ -869,8 +869,9 @@
       existing.remove();
     }
 
-    // Find a persistent container to attach the panel to
-    const container = document.querySelector(".lol-social-actions-bar") || document.body;
+    // Kaleido: the panel is position:fixed, so mount it on <body>. The social bar is re-rendered by
+    // the client when entering champion select, which used to throw the panel away.
+    const container = document.body;
 
     const panel = document.createElement("div");
     panel.id = PANEL_ID;
@@ -1508,11 +1509,17 @@
         createLobbyButton();
       }
 
-      // Ensure panel exists
+      // Ensure panel exists (and keep it open if it was open when the client re-rendered)
       if (!partyPanel || !partyPanel.isConnected) {
+        const wasVisible = isVisible;
         partyPanel = null;
         isVisible = false;
         createPartyPanel();
+        if (wasVisible && partyPanel) {
+          isVisible = true;
+          partyPanel.classList.add("visible");
+          updatePanelState();
+        }
       }
 
       // Track UI mode changes
