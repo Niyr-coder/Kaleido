@@ -2549,17 +2549,22 @@ class MessageHandler:
             return
 
         if getattr(sys, "frozen", False):
-            cmd = [sys.executable]
+            exe = Path(sys.executable)
+            relaunch = f'ping 127.0.0.1 -n 6 >nul & start "" /D "{exe.parent}" "{exe}"'
         else:
-            cmd = [sys.executable, str(Path(sys.argv[0]).resolve())]
+            script = Path(sys.argv[0]).resolve()
+            relaunch = f'ping 127.0.0.1 -n 6 >nul & start "" /D "{script.parent}" "{sys.executable}" "{script}"'
         self._send_toast("Restarting Kaleido to install the update…", "success")
-        log.info(f"[Kaleido] Update install requested; restarting with {cmd}")
+        log.info(f"[Kaleido] Update install requested; relaunch command: {relaunch}")
 
         def restart():
             time.sleep(0.8)
             try:
-                subprocess.Popen(cmd, cwd=str(Path(cmd[-1]).parent), close_fds=True,
-                                 creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+                # A detached cmd waits ~5 s so this instance can shut down before the launcher starts
+                subprocess.Popen(["cmd", "/c", relaunch], close_fds=True,
+                                 creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
+                                 | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                                 | getattr(subprocess, "CREATE_NO_WINDOW", 0))
             except Exception as exc:  # noqa: BLE001
                 log.error(f"[Kaleido] Could not relaunch for update: {exc}")
                 return

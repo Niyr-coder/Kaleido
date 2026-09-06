@@ -282,6 +282,18 @@ class UpdateSequence:
         # Download update
         updates_root = config_path.parent / "updates"
         updates_root.mkdir(parents=True, exist_ok=True)
+
+        # Kaleido: never start a second update while a previous apply_update.bat may still be
+        # running (it deletes itself when done; a fresh one means an update is in progress).
+        try:
+            import time as _time
+            pending = updates_root / "apply_update.bat"
+            if pending.exists() and (_time.time() - pending.stat().st_mtime) < 180:
+                status_callback("Update already in progress, please wait")
+                updater_log.warning("apply_update.bat is less than 3 minutes old; skipping this update attempt.")
+                return False
+        except Exception:
+            pass
         zip_name = asset.get("name") or "update.zip"
         zip_path = updates_root / zip_name
         
