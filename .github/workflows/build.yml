@@ -46,12 +46,9 @@ jobs:
         env:
           KALEIDO_RELAY_URL: ${{ secrets.KALEIDO_RELAY_URL }}
         run: |
-          if ($env:KALEIDO_RELAY_URL) {
-            "RELAY_URL = `"$($env:KALEIDO_RELAY_URL.TrimEnd('/'))`"`n" | Out-File -FilePath "party/network/relay_config.py" -Encoding utf8
-            "Relay URL baked into the build."
-          } else {
-            "No KALEIDO_RELAY_URL secret: Party mode will need relay_url in config.ini."
-          }
+          $url = if ($env:KALEIDO_RELAY_URL) { $env:KALEIDO_RELAY_URL } else { "wss://kaleido-party-relay.krealos.workers.dev" }
+          "RELAY_URL = `"$($url.TrimEnd('/'))`"`n" | Out-File -FilePath "party/network/relay_config.py" -Encoding utf8
+          if ($env:KALEIDO_RELAY_URL) { "Relay URL baked into the build (from the secret)." } else { "No KALEIDO_RELAY_URL secret: using the Krealos relay." }
 
       - name: Build Pengu Loader + Kaleido + installer
         run: python scripts/build_all.py

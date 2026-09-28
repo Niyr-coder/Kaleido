@@ -382,6 +382,18 @@
     .skin-selection-carousel-container {
       clip-path: inset(-200px -9999px -9999px -9999px) !important;
     }
+
+    /* Rift Classic (JADE) champ select uses a separate skins-pane carousel */
+    .skins-pane .skins-pane__locked-overlay,
+    .skins-pane .skins-pane__locked-icon {
+      display: none !important;
+    }
+
+    .skins-pane .skins-pane__skin-card,
+    .skins-pane .skins-pane__skin-image {
+      filter: grayscale(0) saturate(1) contrast(1) !important;
+      -webkit-filter: grayscale(0) saturate(1) contrast(1) !important;
+    }
   `;
 
   const log = {
@@ -526,12 +538,101 @@
     });
   }
 
+  // Swiftplay: the lobby only stores skins the account owns, so a slot's banner
+  // keeps the owned skin's splash when another skin is picked in the carousel.
+  // Remember the pick per banner (keyed by the splash the client shows) and
+  // show the picked skin's splash instead, as the game will.
+  const swiftplayBanners = new Map();
+
+  function champFolder(src) {
+    const match = /\/Characters\/([^/]+)\//i.exec(src || "");
+    return match ? match[1].toLowerCase() : null;
+  }
+
+  function pickedSplash(wrapper) {
+    const thumb = wrapper.querySelector(".skin-thumbnail-img");
+    const match = thumb && /url\(["']?([^"')]+)["']?\)/.exec(thumb.style.backgroundImage);
+    return match ? match[1].replace("_splash_tile_", "_splash_centered_") : null;
+  }
+
+  // The splash the client itself set, even after we replaced it
+  function clientSplash(img) {
+    const src = img.getAttribute("src");
+    return img.dataset.roseBanner && src === img.dataset.roseBanner ? img.dataset.roseOriginal : src;
+  }
+
+  function syncSwiftplayBanners() {
+    const active = document.querySelector(".quick-play-skin-select-component .thumbnail-wrapper.active-skin");
+    const tile = document.querySelector(".quick-play-loadout-selection-hitbox.selected .champion-slot-tile");
+    if (active && tile) {
+      const original = clientSplash(tile);
+      const picked = pickedSplash(active);
+      if (original && picked && champFolder(original) === champFolder(picked)) {
+        if (picked === original) {
+          swiftplayBanners.delete(original);
+        } else {
+          swiftplayBanners.set(original, picked);
+        }
+      }
+    }
+
+    document.querySelectorAll('img[src*="_splash_centered_"]').forEach((img) => {
+      const src = img.getAttribute("src");
+      if (src !== img.dataset.roseBanner) {
+        img.dataset.roseOriginal = src; // the client set a new splash
+      }
+      const picked = swiftplayBanners.get(img.dataset.roseOriginal);
+      if (picked && src !== picked) {
+        img.dataset.roseBanner = picked;
+        img.setAttribute("src", picked);
+      } else if (!picked && img.dataset.roseBanner && src === img.dataset.roseBanner) {
+        img.setAttribute("src", img.dataset.roseOriginal);
+      }
+    });
+  }
+
   function removeAgeRatingInChampSelect() {
     if (!document.querySelector(".champion-select") && !document.querySelector(".skin-selection-carousel")) {
       return;
     }
     document.querySelectorAll(".vng-age-rating").forEach((el) => el.remove());
     document.querySelectorAll(".vng-age-rating-container").forEach((el) => el.remove());
+  }
+
+  // Rift Classic shows the client's "Disabled" subtitle for unowned skins even after Rose unlocks them.
+  const CLASSIC_ENABLED_LABELS = {
+    pt: "Habilitada",
+    es: "Habilitada",
+    en: "Enabled",
+    fr: "Activée",
+    de: "Aktiviert",
+    it: "Abilitata",
+    pl: "Włączona",
+    ro: "Activată",
+    tr: "Etkin",
+    ru: "Доступен",
+  };
+  let classicEnabledLabel = CLASSIC_ENABLED_LABELS.en;
+
+  function loadClassicEnabledLabel() {
+    fetch("/riotclient/region-locale")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        const language = String((data && data.locale) || "")
+          .slice(0, 2)
+          .toLowerCase();
+        classicEnabledLabel = CLASSIC_ENABLED_LABELS[language] || CLASSIC_ENABLED_LABELS.en;
+      })
+      .catch((error) => log.warn("could not read client locale for Rift Classic labels", error));
+  }
+
+  function relabelClassicLockedSkin() {
+    const subtitle = document.querySelector(".skins-pane .skins-pane__sub-title");
+    if (!subtitle) return;
+    const centerLocked = document.querySelector(".skins-pane .skins-pane__skin-card--center-tile .skins-pane__locked-overlay");
+    if (centerLocked && subtitle.textContent.trim() !== classicEnabledLabel) {
+      subtitle.textContent = classicEnabledLabel;
+    }
   }
 
   function scanSkinSelection() {
@@ -543,8 +644,11 @@
       applyOffsetVisibility(skinItem);
     });
 
+    relabelClassicLockedSkin();
+
     // Mark skins as owned in Swiftplay
     markSkinsAsOwned();
+    syncSwiftplayBanners();
 
     // Remove age rating classes when in champ select
     removeAgeRatingInChampSelect();
@@ -895,6 +999,7 @@
       setupPenguWelcomeBadgeFix();
 
       interceptChampSelectWebsocket();
+      loadClassicEnabledLabel();
       injectInlineRules();
       scanSkinSelection();
       // Default-on: first phase-change from Python will shut the observer

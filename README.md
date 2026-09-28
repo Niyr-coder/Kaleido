@@ -11,7 +11,28 @@ de código abierto para League of Legends (licencia MIT, © Alban and Florent). 
 nombre, icono, textos de diálogos e instalador. La lógica interna es la de Rose y toda la documentación
 original sigue aplicando.
 
+## Parche 16.19: Kaleido necesita el parcheador LTK
+
+Desde el parche 16.19 de League (24 de septiembre de 2026) el método de inyección antiguo hace que el juego se
+cierre a los pocos segundos de cargar. Kaleido 1.5.0 incorpora la solución de Rose 1.4.1: la inyección ahora la
+hace el **parcheador LTK**, y `cslol-dll.dll` ya no se usa (Kaleido instala un sustituto propio automáticamente).
+
+Igual que antes con la DLL, Kaleido no puede distribuir el parcheador. Tienes que conseguir tú estos dos archivos
+desde una instalación de **LTK Manager** y copiarlos en la carpeta de herramientas de Kaleido
+(`C:\Program Files\Kaleido\_internal\injection\tools`):
+
+- `ltk_patcher_host.exe`
+- `ltk_patcher_dll.dll`
+
+Si faltan, están dañados o han caducado (la DLL trae una fecha de fin de soporte), Kaleido lo avisa al arrancar
+con un diálogo que abre la carpeta correcta. No los pidas ni los compartas en el Discord de Krealos.
+
 ## Novedades de Kaleido
+
+- **Base Rose 1.4.1 (Kaleido 1.5.0).** Inyección con el parcheador LTK (parche 16.19), soporte de Quickplay y Rift
+  Classic, mods `.modpkg`, idiomas del cliente en los menús de Rose, reconexión automática del modo Party y salas
+  enlazadas (cualquier token de la party sirve para entrar). Los grupos, los retos, la ruleta y el color de party de
+  Kaleido siguen funcionando sobre la nueva base.
 
 - **Panel de ajustes en español.** El panel dentro del cliente de LoL está traducido (selector Español / English arriba del panel; la elección se guarda en el propio cliente).
 - **Perfiles de skins.** Cada skin con la que juegas se guarda en el perfil activo (es lo que usa el modo histórico). Crea perfiles como `Ranked`, `ARAM` o `Tryhard` desde el panel, cámbialos con un clic y verás la lista de campeones y skins guardadas de cada uno. Los perfiles viven en `%LOCALAPPDATA%\Rose\profiles.json`; el cambio aplica a partir de la siguiente selección de campeón.
@@ -71,8 +92,8 @@ Aun así, el uso de herramientas de terceros con el cliente de League puede infr
 Riot y conllevar sanciones en la cuenta. **Cada usuario lo utiliza bajo su propia responsabilidad.** Krealos no se
 hace responsable de suspensiones, pérdidas de cuenta ni de ningún otro daño derivado de su uso.
 
-Kaleido no distribuye la DLL de inyección ni ningún archivo protegido por derechos de autor de terceros. No la
-solicites ni la compartas en el Discord de Krealos.
+Kaleido no distribuye el parcheador LTK (`ltk_patcher_host.exe`, `ltk_patcher_dll.dll`) ni ningún archivo
+protegido por derechos de autor de terceros. No los solicites ni los compartas en el Discord de Krealos.
 
 Kaleido es un fork de [Rose](https://github.com/Alban1911/Rose) (© Alban and Florent, licencia MIT) y utiliza
 [Pengu Loader](https://github.com/PenguLoader/PenguLoader) (licencia MIT). Los avisos de copyright originales se
@@ -151,13 +172,14 @@ Rose includes a suite of JavaScript plugins that extend the League Client UI:
 
 - **Windows 10/11**
 - **League of Legends** installed
-- **Injection DLL** - You must provide your own signed DLL (see below)
+- **LTK patcher** - You must provide your own copy of `ltk_patcher_host.exe` and `ltk_patcher_dll.dll` (see below)
 
-### DLL Requirement
+### LTK patcher requirement
 
-Due to DMCA restrictions, Rose cannot distribute the injection DLL file. You must obtain this file yourself from an authorized source and sign it with your own code signing certificate.
+Rose cannot distribute the LTK patcher. Get both files from an LTK Manager install and place them in Rose's tools
+folder. The DLL carries an end-of-life date; when it expires, update LTK Manager and copy both files again.
 
-On first launch, Rose will prompt you to provide this file and open the folder where it should be placed.
+On first launch, Rose will prompt you to provide these files and open the folder where they should be placed.
 
 ## Installation
 
