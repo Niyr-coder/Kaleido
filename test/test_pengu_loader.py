@@ -32,6 +32,8 @@ class PenguLoaderIntegrationTests(unittest.TestCase):
         self.pengu_log = self.pengu_dir / 'pengu.log'
         # Never write the developer's real config.ini
         self.config_file = state_dir / 'config.ini'
+        # The path the loader exported when it was imported (see test_loader_writes_roses_config_ini)
+        self.loader_config_file = pengu_loader._CONFIG_FILE
         self.paths = patch.multiple(
             pengu_loader,
             _SESSION_FILE=self.session_file,
@@ -300,7 +302,10 @@ class PenguLoaderIntegrationTests(unittest.TestCase):
         self.assertNotIn('should not be included', '\n'.join(logs.output))
 
     def test_loader_writes_roses_config_ini(self):
-        self.assertEqual(os.environ['ROSE_CONFIG_PATH'], str(config.get_config_file_path()))
+        # Exported once at import time: compare with the path the loader itself uses,
+        # not with config.get_config_file_path(), which earlier tests may have moved
+        self.assertEqual(os.environ['ROSE_CONFIG_PATH'], str(self.loader_config_file))
+        self.assertEqual(self.loader_config_file.name, 'config.ini')
 
     @patch.object(pengu_loader, '_is_available', return_value=True)
     @patch.object(pengu_loader, 'get_status', return_value=pengu_loader.PenguStatus.ACTIVE)
