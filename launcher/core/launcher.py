@@ -30,6 +30,7 @@ from utils.system.win32_base import (
 from ..ui.update_dialog import UpdateDialog
 from ..update.update_sequence import UpdateSequence
 from ..sequences.hash_check_sequence import HashCheckSequence
+from ..sequences.patcher_check_sequence import PatcherCheckSequence
 from ..sequences.skin_sync_sequence import SkinSyncSequence
 
 log = get_logger()
@@ -244,6 +245,9 @@ def _run_launcher_dialog(dev_mode: bool, test_download_fail: bool) -> None:
         def worker():
             try:
                 _perform_update(dialog, dev_mode=dev_mode)
+
+                patcher_sequence = PatcherCheckSequence()
+                patcher_sequence.perform_patcher_check(dialog, dev_mode=dev_mode)
 
                 hash_sequence = HashCheckSequence()
                 hash_sequence.perform_hash_check(dialog, dev_mode=dev_mode)

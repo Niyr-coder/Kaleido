@@ -11,24 +11,27 @@ de código abierto para League of Legends (licencia MIT, © Alban and Florent). 
 nombre, icono, textos de diálogos e instalador. La lógica interna es la de Rose y toda la documentación
 original sigue aplicando.
 
-## Parche 16.19: Kaleido necesita el parcheador LTK
+## Parcheador LTK (inyección desde el parche 16.19)
 
 Desde el parche 16.19 de League (24 de septiembre de 2026) el método de inyección antiguo hace que el juego se
 cierre a los pocos segundos de cargar. Kaleido 1.5.0 incorpora la solución de Rose 1.4.1: la inyección ahora la
-hace el **parcheador LTK**, y `cslol-dll.dll` ya no se usa (Kaleido instala un sustituto propio automáticamente).
+hace el **parcheador LTK** (`ltk_patcher_host.exe` + `ltk_patcher_dll.dll`), y `cslol-dll.dll` ya no se usa
+(Kaleido instala un sustituto propio automáticamente).
 
-Igual que antes con la DLL, Kaleido no puede distribuir el parcheador. Tienes que conseguir tú estos dos archivos
-desde una instalación de **LTK Manager** y copiarlos en la carpeta de herramientas de Kaleido
-(`C:\Program Files\Kaleido\_internal\injection\tools`):
+Esa DLL trae una fecha de fin de soporte corta (días a un par de semanas), así que **Kaleido 1.5.1 la descarga y
+actualiza sola** desde el repositorio público de League Toolkit al arrancar, igual que ya hace con los hashes del
+juego. No tienes que copiar nada a mano; cuando está a punto de caducar, Kaleido baja la versión nueva en el
+siguiente arranque (`injection/tools/patcher_downloader.py`, enganchado en el lanzador).
 
-- `ltk_patcher_host.exe`
-- `ltk_patcher_dll.dll`
-
-Si faltan, están dañados o han caducado (la DLL trae una fecha de fin de soporte), Kaleido lo avisa al arrancar
-con un diálogo que abre la carpeta correcta. No los pidas ni los compartas en el Discord de Krealos.
+Solo si Kaleido no puede descargarla (sin internet, o League Toolkit aún no publicó la DLL del nuevo parche)
+aparece un diálogo pidiéndote revisar la conexión o, como último recurso, copiar los dos archivos desde una
+instalación de **LTK Manager** a `C:\Program Files\Kaleido\_internal\injection\tools`. La fuente y el repositorio
+se pueden cambiar en `config.ini` con `ltk_patcher_url`. No pidas ni compartas estos archivos en el Discord de Krealos.
 
 ## Novedades de Kaleido
 
+- **Descarga automática del parcheador LTK (Kaleido 1.5.1).** La DLL de inyección caduca cada pocos días; Kaleido
+  la baja y la mantiene al día sola desde el repositorio oficial de League Toolkit, sin copiar archivos a mano.
 - **Base Rose 1.4.1 (Kaleido 1.5.0).** Inyección con el parcheador LTK (parche 16.19), soporte de Quickplay y Rift
   Classic, mods `.modpkg`, idiomas del cliente en los menús de Rose, reconexión automática del modo Party y salas
   enlazadas (cualquier token de la party sirve para entrar). Los grupos, los retos, la ruleta y el color de party de
@@ -172,14 +175,14 @@ Rose includes a suite of JavaScript plugins that extend the League Client UI:
 
 - **Windows 10/11**
 - **League of Legends** installed
-- **LTK patcher** - You must provide your own copy of `ltk_patcher_host.exe` and `ltk_patcher_dll.dll` (see below)
+- **LTK patcher** - Kaleido downloads `ltk_patcher_host.exe` and `ltk_patcher_dll.dll` automatically (see below)
 
 ### LTK patcher requirement
 
-Rose cannot distribute the LTK patcher. Get both files from an LTK Manager install and place them in Rose's tools
-folder. The DLL carries an end-of-life date; when it expires, update LTK Manager and copy both files again.
-
-On first launch, Rose will prompt you to provide these files and open the folder where they should be placed.
+Kaleido downloads the LTK patcher from League Toolkit's public repository at launch and refreshes it before its
+short end-of-life date expires, so you do not place the files by hand. Only if the download fails (no connection,
+or League Toolkit has not published the new patch's DLL yet) does Kaleido ask you to check your connection or, as a
+last resort, copy both files from an LTK Manager install into its tools folder.
 
 ## Installation
 

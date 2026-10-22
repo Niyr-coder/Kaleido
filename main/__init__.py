@@ -44,32 +44,36 @@ def _get_tools_dir() -> Path:
 
 def _dll_dialog_text(reason: str, detail: str = ""):
     """Return (title, status_title, status_body, steps) for an LTK patcher problem."""
-    source = "Get both files from LTK Manager."
+    # Kaleido downloads the LTK patcher automatically at launch; this dialog only
+    # shows when that failed, so the steps lead with checking the connection and
+    # keep LTK Manager as a manual fallback.
+    manual = (
+        "1. Check your internet connection and restart Kaleido so it can download the patcher.\n"
+        "2. If it keeps failing, install LTK Manager and copy ltk_patcher_host.exe and "
+        "ltk_patcher_dll.dll from it.\n"
+        "3. Open Kaleido's tools folder, place both files there, then restart Kaleido."
+    )
     if reason == "expired":
         return (
             "Kaleido - Patcher Outdated",
             "The LTK patcher has reached its end of life",
-            f"The ltk_patcher_dll.dll in Kaleido's tools folder stopped supporting new game builds on {detail}.",
-            f"1. Update LTK Manager, then get both files from it.\n"
-            "2. Open Kaleido's tools folder.\n"
-            "3. Replace both files, then restart Kaleido.",
+            f"The LTK patcher stopped supporting new game builds on {detail}, and Kaleido could not "
+            "download a newer one.",
+            manual,
         )
     if reason == "invalid":
         return (
             "Kaleido - Broken Patcher",
-            "One Kaleido component needs replacing",
-            "The ltk_patcher_dll.dll in Kaleido's tools folder is not a recognized LTK patcher DLL.",
-            f"1. {source}\n"
-            "2. Open Kaleido's tools folder.\n"
-            "3. Replace both files, then restart Kaleido.",
+            "The LTK patcher could not be prepared",
+            "The ltk_patcher_dll.dll in Kaleido's tools folder is not a recognized LTK patcher DLL, "
+            "and Kaleido could not download a replacement.",
+            manual,
         )
     return (
         "Kaleido - Missing Patcher",
-        "One Kaleido component is missing",
-        f"Kaleido needs {detail or 'the LTK patcher'} in its tools folder before it can start.",
-        f"1. {source}\n"
-        "2. Open Kaleido's tools folder.\n"
-        "3. Place both files there, then restart Kaleido.",
+        "The injection patcher is missing",
+        f"Kaleido needs {detail or 'the LTK patcher'} and could not download it automatically.",
+        manual,
     )
 
 
@@ -317,6 +321,16 @@ def _check_dll_present() -> bool:
 
     tools_dir = _get_tools_dir()
     _sync_cslol_stub(tools_dir)
+
+    # Kaleido: fetch/refresh the LTK patcher automatically (the launcher already
+    # tries this; repeat here so a direct start self-heals before we give up).
+    try:
+        from injection.tools.patcher_downloader import ensure_ltk_patcher, needs_refresh
+        if needs_refresh(tools_dir):
+            ensure_ltk_patcher(tools_dir)
+    except Exception:
+        pass  # Fall through to the guided dialog below
+
     status = check_ltk_patcher(tools_dir)
     if status.missing:
         return _show_dll_dialog(tools_dir, reason="missing", detail=" and ".join(status.missing))

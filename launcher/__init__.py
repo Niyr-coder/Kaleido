@@ -16,6 +16,7 @@ from .update.update_installer import UpdateInstaller
 from .update.github_client import GitHubClient
 from .ui.update_dialog import UpdateDialog
 from .sequences.hash_check_sequence import HashCheckSequence
+from .sequences.patcher_check_sequence import PatcherCheckSequence
 from .sequences.skin_sync_sequence import SkinSyncSequence
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     'GitHubClient',
     'UpdateDialog',
     'HashCheckSequence',
+    'PatcherCheckSequence',
     'SkinSyncSequence',
 ]
