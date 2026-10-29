@@ -33,7 +33,25 @@ class LtkPatcherStatus:
 
     @property
     def expired(self) -> bool:
+        """Wall-clock past the EOL. Only a rough early-warning: the DLL actually
+        refuses by game build, not by the current time (see rejects_game)."""
         return self.eol is not None and time.time() > self.eol
+
+    def rejects_game(self, game_exe: Path) -> bool:
+        """Whether the patcher would refuse to inject this game build.
+
+        The LTK DLL compares the game executable's build timestamp against its
+        EOL, so a patcher past its calendar date still injects the live game
+        until Riot ships a build newer than the EOL. When the game build cannot
+        be read we do not block: the DLL enforces the rule itself at runtime and
+        refuses cleanly (no crash) if it is really too old.
+        """
+        if self.eol is None:
+            return True  # not a usable patcher DLL
+        build_ts = read_pe_timestamp(game_exe)
+        if build_ts is None:
+            return False
+        return build_ts > self.eol
 
 
 def check_ltk_patcher(tools_dir: Path) -> LtkPatcherStatus:
@@ -43,6 +61,24 @@ def check_ltk_patcher(tools_dir: Path) -> LtkPatcherStatus:
     missing = [p.name for p in (host, dll) if not p.is_file()]
     eol = read_dll_eol(dll) if dll.is_file() else None
     return LtkPatcherStatus(host=host, dll=dll, missing=missing, eol=eol)
+
+
+def read_pe_timestamp(pe_path: Path) -> Optional[int]:
+    """Return a PE file's COFF TimeDateStamp (build time), or None."""
+    try:
+        data = pe_path.read_bytes()
+    except OSError:
+        return None
+    if data[:2] != b"MZ":
+        return None
+    try:
+        pe = struct.unpack_from("<I", data, 0x3C)[0]
+        if data[pe:pe + 4] != b"PE\0\0":
+            return None
+        ts = struct.unpack_from("<I", data, pe + 8)[0]
+    except struct.error:
+        return None
+    return ts or None
 
 
 def read_dll_eol(dll_path: Path) -> Optional[int]:

@@ -79,12 +79,25 @@ class EnsureTests(unittest.TestCase):
             pd.ensure_ltk_patcher(self.tools, force=True)
         self.assertEqual((self.tools / pd.LTK_PATCHER_DLL).read_bytes(), b"GOODOLD")
 
-    def test_rejects_already_expired_download(self):
+    def test_installs_latest_even_if_calendar_eol_passed(self):
+        # Empty dir, download whose EOL is already in the past by wall-clock:
+        # still installed, because usability is decided by game build, not time.
         with patch.object(pd, "read_dll_eol", return_value=PAST), \
-             patch.dict(sys.modules, {"requests": _fake_requests()}):
+             patch.dict(sys.modules, {"requests": _fake_requests(dll=b"BESTAVAIL")}):
             ok = pd.ensure_ltk_patcher(self.tools, force=True)
-        self.assertFalse(ok)
-        self.assertFalse((self.tools / pd.LTK_PATCHER_DLL).exists())
+        self.assertTrue(ok)
+        self.assertEqual((self.tools / pd.LTK_PATCHER_DLL).read_bytes(), b"BESTAVAIL")
+
+    def test_keeps_current_when_download_is_older(self):
+        (self.tools / pd.LTK_PATCHER_DLL).write_bytes(b"CURRENT")
+        (self.tools / pd.LTK_PATCHER_HOST).write_bytes(b"CURRENTHOST")
+        # current EOL far future, downloaded EOL older -> keep current, no write
+        with patch.object(pd, "read_dll_eol", return_value=PAST), \
+             patch.object(pd, "check_ltk_patcher", return_value=_status(eol=FAR_FUTURE)), \
+             patch.dict(sys.modules, {"requests": _fake_requests(dll=b"OLDER")}):
+            ok = pd.ensure_ltk_patcher(self.tools, force=True)
+        self.assertTrue(ok)
+        self.assertEqual((self.tools / pd.LTK_PATCHER_DLL).read_bytes(), b"CURRENT")
 
     def test_network_error_leaves_disk_untouched(self):
         (self.tools / pd.LTK_PATCHER_DLL).write_bytes(b"KEEP")

@@ -230,11 +230,13 @@ class OverlayManager:
             )
             return 1
 
-        # Rose may have been running since before the DLL reached its end of life
+        # The DLL refuses game builds newer than its EOL; block only when this
+        # game's build actually exceeds it (not merely because the calendar date
+        # passed), so a patcher stays usable until Riot ships a newer build.
         patcher = check_ltk_patcher(ltk_host.parent)
-        if patcher.expired:
-            eol = time.strftime("%Y-%m-%d %H:%M", time.localtime(patcher.eol))
-            log.error(f"[INJECT] LTK patcher reached its end of life on {eol}")
+        if patcher.rejects_game(self.game_dir / "League of Legends.exe"):
+            eol = time.strftime("%Y-%m-%d %H:%M", time.localtime(patcher.eol)) if patcher.eol else "unknown"
+            log.error(f"[INJECT] LTK patcher does not support this game build (EOL {eol})")
             self._report_ltk_patcher_eol(eol)
             return 1
 
@@ -386,7 +388,7 @@ class OverlayManager:
                 return
             from ..tools.tools_manager import ToolsManager
             ltk_host = ToolsManager(self.tools_dir).detect_ltk_patcher()
-            if not ltk_host or check_ltk_patcher(ltk_host.parent).expired:
+            if not ltk_host or check_ltk_patcher(ltk_host.parent).rejects_game(self.game_dir / "League of Legends.exe"):
                 return
             overlay_dir = self.mods_dir.parent / "overlay"
             overlay_dir.mkdir(parents=True, exist_ok=True)

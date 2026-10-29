@@ -316,7 +316,6 @@ def _check_dll_present() -> bool:
     if sys.platform != "win32":
         return True  # Only relevant on Windows
 
-    from datetime import datetime
     from injection.tools.patcher import check_ltk_patcher
 
     tools_dir = _get_tools_dir()
@@ -336,9 +335,10 @@ def _check_dll_present() -> bool:
         return _show_dll_dialog(tools_dir, reason="missing", detail=" and ".join(status.missing))
     if status.eol is None:
         return _show_dll_dialog(tools_dir, reason="invalid")
-    if status.expired:
-        eol = datetime.fromtimestamp(status.eol).strftime("%Y-%m-%d %H:%M")
-        return _show_dll_dialog(tools_dir, reason="expired", detail=eol)
+    # Do NOT block on a wall-clock EOL here. The LTK patcher refuses game builds
+    # newer than its EOL, not "the current time", so a patcher past its calendar
+    # date still injects the live game until Riot ships a newer build. Injection
+    # checks the real game build (overlay_manager.rejects_game) and reports then.
     return True
 
 

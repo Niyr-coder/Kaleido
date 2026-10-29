@@ -120,25 +120,40 @@ def ensure_ltk_patcher(
         if new_eol is None:
             log.warning("[LTK] Downloaded DLL is not a recognizable patcher, keeping current files")
             report("Could not verify the downloaded patcher")
-            return check_ltk_patcher(tools_dir).eol is not None and not check_ltk_patcher(tools_dir).expired
-        if time.time() > new_eol:
-            log.warning("[LTK] Downloaded DLL is already past its end of life; upstream may not have shipped the fix yet")
-            report("The available patcher is outdated")
-            return False
+            return _has_usable_patcher(tools_dir)
 
-        _write_atomic(tools_dir / LTK_PATCHER_DLL, dll_bytes)
+        # Keep the newest patcher. We do NOT reject a download just because its
+        # calendar EOL already passed: the DLL refuses by game build, so the
+        # latest available one still injects the live game until Riot patches
+        # past it (and it is the best we can offer a fresh install today).
+        current = check_ltk_patcher(tools_dir)
+        current_eol = None if current.missing else current.eol
+        if current_eol is not None and new_eol < current_eol:
+            log.info("[LTK] Downloaded DLL is older than the current one; keeping current")
+            return True
+        dll_path = tools_dir / LTK_PATCHER_DLL
+        if current_eol is not None and new_eol == current_eol and dll_path.is_file() and dll_path.read_bytes() == dll_bytes:
+            log.debug("[LTK] Already have the latest patcher")
+            return True
+
+        _write_atomic(dll_path, dll_bytes)
         _write_atomic(tools_dir / LTK_PATCHER_HOST, host_bytes)
         from datetime import datetime
-        log.info(f"[LTK] Patcher updated (valid until {datetime.fromtimestamp(new_eol):%Y-%m-%d %H:%M})")
+        log.info(f"[LTK] Patcher updated (supports game builds up to {datetime.fromtimestamp(new_eol):%Y-%m-%d %H:%M})")
         report("Injection patcher updated")
         return True
 
     except Exception as e:
         log.warning(f"[LTK] Could not auto-update the patcher: {e}")
         report("Could not reach the patcher server")
-        # Fall back to whatever is already on disk
-        status = check_ltk_patcher(tools_dir)
-        return (not status.missing) and status.eol is not None and not status.expired
+        return _has_usable_patcher(tools_dir)
+
+
+def _has_usable_patcher(tools_dir: Path) -> bool:
+    """A patcher is in place and is a recognizable LTK DLL (usability vs the live
+    game build is enforced at injection time, not here)."""
+    status = check_ltk_patcher(tools_dir)
+    return (not status.missing) and status.eol is not None
 
 
 def _import_timeout() -> int:

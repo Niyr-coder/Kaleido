@@ -30,6 +30,11 @@ se pueden cambiar en `config.ini` con `ltk_patcher_url`. No pidas ni compartas e
 
 ## Novedades de Kaleido
 
+- **La caducidad del parcheador se mide por el build del juego, no por el reloj (Kaleido 1.5.2).** El parcheador LTK
+  solo rechaza parches del juego más nuevos que su fecha de fin de soporte; no "deja de servir" a una hora. Kaleido
+  ahora comprueba la fecha de compilación del cliente de League en vez de la hora del sistema, así que un parcheador
+  pasado de fecha sigue inyectando el parche actual hasta que Riot saque uno nuevo, y Kaleido ya no se bloquea de más
+  al arrancar. Si League Toolkit aún no publicó la DLL del parche nuevo, Kaleido usa la última disponible.
 - **Descarga automática del parcheador LTK (Kaleido 1.5.1).** La DLL de inyección caduca cada pocos días; Kaleido
   la baja y la mantiene al día sola desde el repositorio oficial de League Toolkit, sin copiar archivos a mano.
 - **Base Rose 1.4.1 (Kaleido 1.5.0).** Inyección con el parcheador LTK (parche 16.19), soporte de Quickplay y Rift
