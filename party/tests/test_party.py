@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 import tempfile
 import time
 import unittest
@@ -12,6 +14,8 @@ from party.core.party_manager import PartyManager
 from party.discovery import custom_mods
 from party.discovery.skin_collector import PartySkinData, SkinCollector
 from party.integration.injection_hook import PartyInjectionHook
+from injection.mods.mod_facts import compute_mod_facts
+from injection.mods.mod_files import ModFiles
 from party.protocol.token_codec import PartyToken, create_token
 
 
@@ -36,7 +40,12 @@ def member(summoner_id, name, champion_id=None, skin_id=None, **skin_fields):
     skin = None
     if champion_id is not None:
         skin = {"champion_id": champion_id, "skin_id": skin_id, **skin_fields}
-    return {"summoner_id": summoner_id, "summoner_name": name, "skin": skin}
+    return {
+        "summoner_id": summoner_id,
+        "summoner_name": name,
+        "member_key": f"{summoner_id:064x}",
+        "skin": skin,
+    }
 
 
 class TokenTests(unittest.TestCase):
@@ -68,6 +77,43 @@ class PartyStorageTests(unittest.TestCase):
             with patch.object(party_storage, "get_user_data_dir", return_value=Path(temp_dir)):
                 key = party_storage.load_party_key(1)
                 self.assertEqual(party_storage.load_party_key(1), key)
+
+    def test_party_identity_is_persistent_and_separate_from_the_invitation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(party_storage, "get_user_data_dir", return_value=Path(temp_dir)):
+                invitation = party_storage.load_party_key(1)
+                identity = party_storage.load_party_identity_key(1)
+                self.assertEqual(party_storage.load_party_identity_key(1), identity)
+                self.assertNotEqual(party_storage.load_party_identity_key(2), identity)
+                self.assertNotEqual(invitation, identity)
+                self.assertEqual(party_storage.load_party_key(1), invitation)
+
+    def test_a_corrupt_identity_is_replaced(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / party_storage.PARTY_IDENTITY_KEYS_FILE
+            for content in ('{"1":"invalid"}', "{not json", '["a list"]'):
+                path.write_text(content, encoding="utf-8")
+                with patch.object(party_storage, "get_user_data_dir", return_value=Path(temp_dir)):
+                    key = party_storage.load_party_identity_key(1)
+                    self.assertEqual(len(key), party_storage.KEY_SIZE)
+                    self.assertEqual(party_storage.load_party_identity_key(1), key)
+                self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"1": key.hex()})
+
+    def test_a_locked_identity_file_is_not_replaced(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / party_storage.PARTY_IDENTITY_KEYS_FILE
+            path.write_text('{"1":"%s"}' % ("ab" * party_storage.KEY_SIZE), encoding="utf-8")
+            with patch.object(party_storage, "get_user_data_dir", return_value=Path(temp_dir)), \
+                    patch.object(Path, "read_text", side_effect=PermissionError("locked")):
+                with self.assertRaisesRegex(RuntimeError, "Couldn't read"):
+                    party_storage.load_party_identity_key(1)
+            self.assertEqual(path.read_text(encoding="utf-8"), '{"1":"%s"}' % ("ab" * party_storage.KEY_SIZE))
+
+    def test_an_unsaved_identity_is_still_used(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(party_storage, "get_user_data_dir", return_value=Path(temp_dir)), \
+                    patch.object(party_storage, "write_text_atomic", side_effect=OSError("disk is full")):
+                self.assertEqual(len(party_storage.load_party_identity_key(1)), party_storage.KEY_SIZE)
 
 
 class CustomModsTests(unittest.TestCase):
@@ -128,6 +174,118 @@ class CustomModsTests(unittest.TestCase):
         # Another champion's folder is never searched
         self.assertIsNone(custom_mods.find_local_mod(11, content_hash=content_hash))
 
+    def test_preview_image_does_not_change_party_hash_and_replacement_refreshes_cache(self):
+        folder = self.root / "shared mod"
+        self._write_mod_files(folder)
+        archive = self.root / "same mod.zip"
+        with zipfile.ZipFile(archive, "w") as packed:
+            for file_path in folder.rglob("*"):
+                if file_path.is_file():
+                    packed.write(file_path, file_path.relative_to(folder).as_posix())
+        archive_hash, _ = custom_mods.mod_hashes(archive)
+        folder_hash, _ = custom_mods.mod_hashes(folder)
+        self.assertEqual(folder_hash, archive_hash)
+
+        image = folder / "META" / "image.png"
+        image.write_bytes(b"first preview")
+        os.utime(image, ns=(1_000_000_000, 1_000_000_000))
+        first_hash, _ = custom_mods.mod_hashes(folder)
+        first_stamp = custom_mods._hash_cache[str(folder)][0]
+        self.assertEqual(first_hash, archive_hash)
+
+        image.write_bytes(b"replacement preview")
+        os.utime(image, ns=(2_000_000_000, 2_000_000_000))
+        replacement_hash, _ = custom_mods.mod_hashes(folder)
+        replacement_stamp = custom_mods._hash_cache[str(folder)][0]
+
+        self.assertEqual(replacement_hash, archive_hash)
+        self.assertNotEqual(replacement_stamp, first_stamp)
+
+    def save_mod(self, name, **entry):
+        """Register a saved mod of Ahri's in her manifest"""
+        manifest = self.mods_root / "skins" / "103000" / "rose_mod_targets.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else {"version": 1, "mods": {}}
+        payload["mods"][name] = {"name": name, "targets": [103001], **entry}
+        manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    def our_pick(self, custom_mod_path):
+        manager = PartyManager(Mock(), make_state())
+        selection = SimpleNamespace(champion_id=103, skin_id=103001, chroma_id=None, custom_mod_path=custom_mod_path)
+        manager._skin_collector = Mock(get_my_selection=Mock(return_value=selection))
+        return manager._current_skin_state()
+
+    def test_polling_a_renamed_pending_pick_never_reads_the_whole_mod_to_match_it(self):
+        """Party mode asks every second: matching a renamed file to its entry
+        by content would read all of it (3.5 GB for a voiceover pack)"""
+        archive = self.mods_root / "skins" / "103000" / "Renamed Ahri.zip"
+        self._make_archive(archive)
+        self.save_mod("Original Ahri", folderHash=compute_mod_facts(archive)[1])
+
+        with patch("injection.mods.manifest.compute_mod_facts", wraps=compute_mod_facts) as read_whole_mod:
+            polls = [self.our_pick("skins/103000/Renamed Ahri.zip") for _ in range(3)]
+
+        read_whole_mod.assert_not_called()
+        self.assertEqual([poll["custom_mod_content_hash"] for poll in polls], [custom_mods.mod_hashes(archive)[0]] * 3)
+
+    def test_a_renamed_pending_pick_saved_as_its_folder_shares_its_archive(self):
+        archive = self.mods_root / "skins" / "103000" / "Renamed Ahri.fantome"
+        self._make_archive(archive)
+        self.save_mod("Original Ahri", folderHash=compute_mod_facts(archive)[1])
+
+        state = self.our_pick("skins/103000/Renamed Ahri")
+
+        self.assertEqual(state["custom_mod_content_hash"], custom_mods.mod_hashes(archive)[0])
+
+    def test_a_change_to_the_picked_archive_is_shared_at_the_next_poll(self):
+        archive = self.mods_root / "skins" / "103000" / "Ahri.fantome"
+        self._make_archive(archive)
+        self.save_mod("Ahri")
+        folder_an_older_rose_saved_as_the_pick = "skins/103000/Ahri"
+        before = self.our_pick(folder_an_older_rose_saved_as_the_pick)
+
+        with zipfile.ZipFile(archive, "w") as packed:
+            packed.writestr("WAD/Ahri.wad.client", b"the mod's newer version")
+        os.utime(archive, ns=(2_000_000_000, 2_000_000_000))
+        changed = self.our_pick("skins/103000/Ahri")
+        newer_hash = custom_mods._archive_content_hash(archive)
+        archive.unlink()
+        deleted = self.our_pick("skins/103000/Ahri")
+
+        self.assertNotEqual(newer_hash, before["custom_mod_content_hash"])
+        self.assertEqual(changed["custom_mod_content_hash"], newer_hash)
+        self.assertNotIn("custom_mod_content_hash", deleted)
+
+    def test_our_pick_of_a_pending_mod_shares_the_hashes_of_its_file(self):
+        archive = self.mods_root / "skins" / "103000" / "Old Ahri.zip"
+        self._make_archive(archive)
+        self.save_mod("Old Ahri")
+
+        state = self.our_pick("skins/103000/Old Ahri.zip")
+
+        self.assertEqual((state["custom_mod_content_hash"], state["custom_mod_hash"]), custom_mods.mod_hashes(archive))
+
+    def test_our_pick_of_a_skin_this_rose_added_shares_the_hash_of_the_file_picked(self):
+        """A friend's exact copy has it, whatever Rose rewrote since: nothing is read"""
+        self._make_archive(self.mods_root / "skins" / "103000" / "Ahri.fantome")
+        picked = "ab" * 32
+        self.save_mod("Ahri", sourceHash=picked)
+
+        with patch.object(custom_mods, "mod_hashes", side_effect=AssertionError("hashed")):
+            state = self.our_pick("skins/103000/Ahri.fantome")
+
+        self.assertEqual((state["is_custom"], state["custom_mod_hash"]), (True, picked[:16]))
+        self.assertNotIn("custom_mod_content_hash", state)
+
+    def test_a_friends_skin_matches_one_this_rose_added_by_the_file_picked_without_reading_it(self):
+        self._make_archive(self.mods_root / "skins" / "103000" / "Ahri.fantome")
+        picked = "ab" * 32
+        self.save_mod("Ahri", sourceHash=picked)
+
+        with patch.object(custom_mods, "mod_hashes", side_effect=AssertionError("hashed")):
+            self.assertEqual(custom_mods.find_local_mod(103, legacy_hash=picked[:16]), "skins/103000/Ahri.fantome")
+            self.assertIsNone(custom_mods.find_local_mod(103, content_hash="c0ffee", legacy_hash="0" * 16))
+
 
 class SkinCollectorSelectionTests(unittest.TestCase):
     def pick(self, **state):
@@ -157,6 +315,46 @@ class SkinCollectorSelectionTests(unittest.TestCase):
             self.pick(historic_mode_active=True, historic_skin_id="path:skins/103000/Mod", last_hovered_skin_id=None),
             (103000, None, "skins/103000/Mod"),
         )
+
+    def test_custom_mod_on_another_skin_or_chroma_is_shared(self):
+        # Picked on a chroma, or auto-selected for another target skin: the
+        # injection applies it all the same
+        for mod_skin_id in (103004, 103015):
+            self.assertEqual(
+                self.pick(selected_custom_mod={
+                    "skin_id": mod_skin_id, "champion_id": 103, "relative_path": "skins/103000/Mod",
+                }),
+                (103001, None, "skins/103000/Mod"),
+            )
+        self.assertEqual(
+            self.pick(last_hovered_skin_id=None, selected_custom_mod={
+                "skin_id": 103000, "champion_id": 103, "relative_path": "skins/103000/Mod",
+            }),
+            (103000, None, "skins/103000/Mod"),
+        )
+
+    def test_custom_mod_of_another_champion_is_not_shared(self):
+        self.assertEqual(
+            self.pick(selected_custom_mod={"skin_id": 60025026, "relative_path": "skins/60025000/Mod"}),
+            (103001, None, None),
+        )
+        self.assertEqual(
+            self.pick(selected_custom_mod={
+                "skin_id": 103001, "champion_id": 60025, "relative_path": "skins/60025000/Mod",
+            }),
+            (103001, None, None),
+        )
+
+    def test_custom_mod_auto_selected_before_freezing_is_kept(self):
+        state = make_state(champ_select_generation=3)
+        collector = SkinCollector(state)
+        # HistoricMode off: the injection auto-selects the saved mod, then freezes
+        state.selected_custom_mod = {
+            "skin_id": 103001, "champion_id": 103, "relative_path": "skins/103000/Mod",
+        }
+        collector.freeze_my_selection(1, "Me")
+        state.selected_custom_mod = None
+        self.assertEqual(collector.get_my_selection(1, "Me").custom_mod_path, "skins/103000/Mod")
 
     def test_no_champion_no_selection(self):
         self.assertIsNone(self.pick(locked_champ_id=None))
@@ -215,15 +413,20 @@ class SkinCollectorInjectionTests(unittest.TestCase):
 
 
 class MergedMembersTests(unittest.TestCase):
+    def add_room(self, manager, room_key, members, **kwargs):
+        relay = SimpleNamespace(room_key=room_key, members=members, connected=True, **kwargs)
+        manager._relays[room_key] = relay
+        manager._on_relay_members_changed(relay)
+        return relay
+
     def test_newest_state_wins_and_removed_peers_are_hidden(self):
         manager = PartyManager(Mock(), make_state())
         manager.party_state.my_summoner_id = 1
         older = member(2, "B", 11, 11001, sent_at=100)
         newer = member(2, "B", 11, 11002, sent_at=200)
-        manager._relays = {
-            "a" * 32: SimpleNamespace(members=[member(1, "Me"), newer], connected=False),
-            "b" * 32: SimpleNamespace(members=[older, member(3, "C", 22, 22001)], connected=True),
-        }
+        first = self.add_room(manager, "a" * 32, [member(1, "Me"), newer])
+        first.connected = False
+        self.add_room(manager, "b" * 32, [older, member(3, "C", 22, 22001)])
         manager._ignored_peers = {3}
 
         merged = manager._merged_members()
@@ -233,11 +436,24 @@ class MergedMembersTests(unittest.TestCase):
         self.assertEqual(state["skin"]["skin_id"], 11002)
         self.assertTrue(connected)
 
+    def test_a_newer_state_in_another_room_cannot_replace_a_pinned_identity(self):
+        manager = PartyManager(Mock(), make_state())
+        manager.party_state.my_summoner_id = 1
+        known = member(2, "B", 11, 11001, sent_at=100)
+        conflict = member(2, "Wrong identity", 11, 11002, sent_at=200, removed=["1"], rooms=["c" * 32])
+        conflict["member_key"] = "f" * 64
+        first = self.add_room(manager, "a" * 32, [known])
+        first.connected = False
+        self.add_room(manager, "b" * 32, [conflict])
+
+        self.assertEqual(manager._merged_members(), {2: (known, False)})
+        self.assertEqual(manager._peers_who_removed_us(), set())
+
     def test_a_friend_who_removed_us_is_gone_for_us_too(self):
         manager = PartyManager(Mock(), make_state())
         manager.party_state.my_summoner_id = 1
-        remover = member(2, "B", 11, 11002, removed=[1])
-        manager._relays = {"a" * 32: SimpleNamespace(members=[member(1, "Me"), remover], connected=True)}
+        remover = member(2, "B", 11, 11002, removed=["1"])
+        self.add_room(manager, "a" * 32, [member(1, "Me"), remover])
 
         self.assertEqual(manager._merged_members(), {})
         self.assertEqual(manager._peers_who_removed_us(), {2})
@@ -258,19 +474,18 @@ class MergedMembersTests(unittest.TestCase):
 
         asyncio.run(manager.remove_peer(2))
 
-        self.assertEqual(relay.sent[-1]["removed"], [2])
+        self.assertEqual(relay.sent[-1]["removed"], ["2"])
 
     def test_both_removing_each_other_then_adding_back(self):
         me = PartyManager(Mock(), make_state())
         me.party_state.my_summoner_id = 1
         me.party_state.enabled = True
         friend = member(2, "B", 11, 11002, removed=[1])  # they removed us too
-        relay = SimpleNamespace(members=[member(1, "Me"), friend], connected=True, sent=[])
+        relay = self.add_room(me, "a" * 32, [member(1, "Me"), friend], sent=[], resume=Mock())
 
         async def send_state(state):
             relay.sent.append(state)
         relay.send_state = send_state
-        me._relays = {"a" * 32: relay}
         asyncio.run(me.remove_peer(2))
 
         token = create_token(summoner_id=2, encryption_key=b"k" * 32).encode()
@@ -311,7 +526,7 @@ class RelayQuietWhenAloneTests(unittest.TestCase):
 
     def setUp(self):
         from party.network.ws_relay import PartyRelay
-        self.relay = PartyRelay("a" * 32, 1, "Me")
+        self.relay = PartyRelay("a" * 32, 1, "Me", b"k" * 32)
         self.socket = FakeSocket()
         self.relay._ws = self.socket
         self.relay._connected = True
@@ -348,6 +563,188 @@ class RelayQuietWhenAloneTests(unittest.TestCase):
         self.relay._sent_state = None  # what _open does on a new connection
         asyncio.run(self.relay._deliver_state())
         self.assertEqual(self.skins_sent(), [{"skin_id": 103001}, {"skin_id": 103001}])
+
+
+class RelayReconnectTests(unittest.TestCase):
+    """Every connection wakes the room on the relay, which the relay pays for:
+    reconnecting stops instead of looping, until the party needs the room again."""
+
+    def setUp(self):
+        from party.network import ws_relay
+        self.module = ws_relay
+        self.relay = ws_relay.PartyRelay("a" * 32, 1, "Me", b"k" * 32)
+        self.clock = [0.0]
+        self.delays = []
+        self.opens = 0
+
+        async def sleep(seconds):
+            self.delays.append(seconds)
+            self.clock[0] += seconds
+
+        self.enterContext(patch.object(ws_relay.asyncio, "sleep", sleep))
+        self.enterContext(patch.object(ws_relay, "time", SimpleNamespace(monotonic=lambda: self.clock[0])))
+
+    def run_relay(self, connections, keepalive_ws=None):
+        """connections: one entry per attempt, None for a refused one, else
+        (seconds the connection lasts, reason it was closed with)."""
+        remaining = list(connections)
+
+        async def open_(timeout):
+            self.opens += 1
+            if not remaining:
+                self.relay._closing = True  # the test is over
+                return False
+            outcome = remaining.pop(0)
+            if outcome is None:
+                return False
+            self.relay._ws = SimpleNamespace(lasts=outcome[0], close_reason=outcome[1])
+            self.relay._connected = True
+            return True
+
+        async def receive(ws):
+            self.clock[0] += ws.lasts
+
+        async def keepalive(ws):
+            pass
+
+        self.relay._open = open_
+        self.relay._receive = receive
+        self.relay._keepalive = keepalive
+        asyncio.run(self.relay._run())
+
+    def test_replaced_by_another_connection_stops_reconnecting(self):
+        self.relay._ws = SimpleNamespace(lasts=5, close_reason="replaced")
+        self.relay._connected = True
+        self.run_relay([])
+        self.assertEqual(self.opens, 0)
+        self.assertTrue(self.relay.stopped)
+
+    def test_connections_that_drop_at_once_back_off_then_stop(self):
+        self.run_relay([(1, "")] * 10)
+        self.assertEqual(self.delays, list(self.module.RECONNECT_DELAYS))
+        self.assertEqual(self.opens, len(self.module.RECONNECT_DELAYS))
+        self.assertTrue(self.relay.stopped)
+
+    def test_refused_connections_stop_after_every_delay(self):
+        self.run_relay([None] * 10)
+        self.assertEqual(self.opens, len(self.module.RECONNECT_DELAYS))
+        self.assertTrue(self.relay.stopped)
+
+    def test_a_lasting_connection_starts_the_delays_over(self):
+        self.run_relay([(1, ""), (1, ""), (400, ""), (1, "")])
+        self.assertEqual(self.delays[:4], [1.0, 2.0, 5.0, 1.0])
+
+    def test_connections_cut_every_100s_back_off_then_stop(self):
+        # Cloudflare cuts a connection that carries nothing after 100s: pings
+        # that never get through must not keep a room waking up all day
+        self.run_relay([(100, "")] * 10)
+        self.assertEqual(self.delays, list(self.module.RECONNECT_DELAYS))
+        self.assertTrue(self.relay.stopped)
+
+    def test_a_full_room_stops_at_once(self):
+        async def open_(timeout):
+            self.opens += 1
+            self.relay._refused_status = self.module.ROOM_FULL_STATUS
+            return False
+        self.relay._open = open_
+        asyncio.run(self.relay._run())
+        self.assertEqual(self.opens, 1)
+        self.assertTrue(self.relay.stopped)
+
+    def test_a_relay_asking_for_a_newer_rose_stops_at_once(self):
+        async def open_(timeout):
+            self.opens += 1
+            self.relay._refused_status = self.module.UPDATE_REQUIRED_STATUS
+            return False
+        self.relay._open = open_
+        asyncio.run(self.relay._run())
+        self.assertEqual(self.opens, 1)
+        self.assertTrue(self.relay.stopped)
+
+    def test_the_update_refusal_says_so(self):
+        error = SimpleNamespace(status_code=426)
+        self.assertIn("update Rose", self.module._describe_error(error))
+
+    def test_an_identity_conflict_stops_reconnecting_until_resumed(self):
+        async def open_(timeout):
+            self.opens += 1
+            self.relay._refused_status = self.module.IDENTITY_CONFLICT_STATUS
+            return False
+
+        self.relay._open = open_
+        asyncio.run(self.relay._run())
+        self.assertEqual(self.opens, 1)
+        self.assertTrue(self.relay.stopped)
+        with patch.object(self.module.asyncio, "create_task") as create_task:
+            self.relay.resume()
+        create_task.assert_called_once()
+        create_task.call_args.args[0].close()
+
+    def test_an_update_refusal_clears_members_and_prevents_automatic_retry(self):
+        async def open_(timeout):
+            self.opens += 1
+            self.relay._refused_status = self.module.UPDATE_REQUIRED_STATUS
+            return False
+
+        self.relay._open = open_
+        self.relay.members = [member(2, "Stale friend")]
+        asyncio.run(self.relay._run())
+        self.assertEqual(self.opens, 1)
+        self.assertTrue(self.relay.stopped)
+        self.assertEqual(self.relay.members, [])
+        with patch.object(self.module.asyncio, "create_task") as create_task:
+            self.relay.resume()
+        create_task.assert_not_called()
+
+    def test_resume_reconnects_a_stopped_room(self):
+        self.relay._stopped = True
+        run = Mock()
+        with patch.object(self.relay, "_run", run), patch.object(self.module.asyncio, "create_task"):
+            self.relay.resume()
+        run.assert_called_once()
+        self.assertFalse(self.relay.stopped)
+
+    def test_resume_leaves_a_live_room_alone(self):
+        with patch.object(self.module.asyncio, "create_task") as create_task:
+            self.relay.resume()
+        create_task.assert_not_called()
+
+
+class EnableTwiceTests(unittest.TestCase):
+    """The plugin can lose its connection while an enable is still joining,
+    and the user then clicks Enable again."""
+
+    def test_an_enable_sent_while_one_is_joining_waits_for_it(self):
+        from party.core import party_manager as module
+        manager = PartyManager(Mock(), make_state())
+        joins = []
+        loops = []
+
+        async def join_room(room):
+            joins.append(room)
+            await asyncio.sleep(0.01)
+            return None
+
+        async def loop():
+            loops.append(1)
+
+        matcher = Mock(get_my_summoner_id=Mock(return_value=1), get_my_summoner_name=Mock(return_value="Me"))
+        manager._join_room = join_room
+        manager._lobby_check_loop = loop
+        manager._skin_broadcast_loop = loop
+        manager._fresh_token = lambda: "token"
+
+        async def enable_twice():
+            return await asyncio.gather(manager.enable(), manager.enable())
+
+        with patch.object(module, "LobbyMatcher", return_value=matcher), \
+                patch.object(module, "SkinCollector"), \
+                patch.object(module, "load_party_key", return_value=b"k" * 32), \
+                patch.object(module, "load_party_identity_key", return_value=b"i" * 32), \
+                patch.object(module, "compute_room_key", return_value="room"):
+            self.assertEqual(asyncio.run(enable_twice()), ["token", "token"])
+        self.assertEqual(joins, ["room"])
+        self.assertEqual(len(loops), 2)  # one lobby check and one skin broadcast
 
 
 class SkinBroadcastSettleTests(unittest.TestCase):
@@ -398,7 +795,6 @@ class InjectionHookTests(unittest.TestCase):
         self.mods_dir = self.root / "mods_dir"
         self.mods_dir.mkdir()
         for target, value in (
-            ("party.integration.injection_hook.get_injection_dir", self.root / "injection"),
             ("party.integration.injection_hook.get_mods_root", self.root / "mods"),
         ):
             patcher = patch(target, return_value=value)
@@ -415,6 +811,10 @@ class InjectionHookTests(unittest.TestCase):
             return None if chroma_id else self.skin_zip
         return SimpleNamespace(mods_dir=self.mods_dir, _resolve_zip=Mock(side_effect=resolve_zip))
 
+    def _wad(self, name):
+        with ModFiles(self.mods_dir / name) as mod:
+            return mod.read("WAD/MasterYi.wad.client")
+
     def test_skin_is_linked_under_a_party_folder(self):
         hook = PartyInjectionHook(Mock(), make_state())
         skin = PartySkinData(summoner_id=2, summoner_name="B", champion_id=11, skin_id=11002, chroma_id=11005)
@@ -422,8 +822,8 @@ class InjectionHookTests(unittest.TestCase):
         name = hook._prepare_single_skin(skin, self.injector())
 
         self.assertEqual(name, "party_2")
-        # Missing chroma: the base skin is used
-        self.assertEqual((self.mods_dir / name / "WAD" / "MasterYi.wad.client").read_bytes(), b"skin")
+        # Missing chroma: the base skin is used, its archive linked as it is
+        self.assertEqual(self._wad(name), b"skin")
 
     def test_custom_mod_folder_is_used(self):
         mod = self.root / "mods" / "skins" / "11000" / "Custom Yi"
@@ -434,6 +834,20 @@ class InjectionHookTests(unittest.TestCase):
 
         name = hook._prepare_single_skin(skin, self.injector())
 
+        self.assertEqual((self.mods_dir / name / "WAD" / "MasterYi.wad.client").read_bytes(), b"custom")
+
+    def test_a_registered_custom_mod_rose_still_holds_is_linked_for_the_friend(self):
+        champion = self.root / "mods" / "skins" / "11000"
+        (champion / "Custom Yi" / "WAD").mkdir(parents=True)
+        (champion / "Custom Yi" / "WAD" / "MasterYi.wad.client").write_bytes(b"custom")
+        (champion / "rose_mod_targets.json").write_text(json.dumps({"version": 1, "championId": 11, "mods": {
+            "Custom Yi": {"name": "Custom Yi", "targets": [11002]},
+        }}), encoding="utf-8")
+        skin = PartySkinData(2, "B", 11, 11002, custom_mod_path="skins/11000/Custom Yi")
+
+        name = PartyInjectionHook(Mock(), make_state())._prepare_single_skin(skin, self.injector())
+
+        self.assertEqual(name, "party_2")
         self.assertEqual((self.mods_dir / name / "WAD" / "MasterYi.wad.client").read_bytes(), b"custom")
 
     def test_rift_classic_uses_the_classic_skin(self):
@@ -447,7 +861,7 @@ class InjectionHookTests(unittest.TestCase):
         name = hook._prepare_single_skin(skin, injector, classic=True)
 
         # Custom mods target the regular characters, which Classic doesn't load
-        self.assertEqual((self.mods_dir / name / "WAD" / "MasterYi.wad.client").read_bytes(), b"skin")
+        self.assertEqual(self._wad(name), b"skin")
         self.assertTrue(injector._resolve_zip.call_args.kwargs["classic"])
 
 
@@ -462,8 +876,8 @@ class PartyOnlyInjectionTests(unittest.TestCase):
         manager.injector.inject_extra_mods.return_value = True
         manager.refresh_injection_threshold = Mock(return_value=0.0)
         manager.injection_threshold = 0.0
-        manager._start_monitor = Mock()
-        manager._stop_monitor = Mock()
+        manager.start_patcher_in_background = Mock()
+        manager.discard_early_patcher = Mock()
         return manager
 
     def test_party_skins_are_injected_without_our_skin(self):
@@ -476,7 +890,8 @@ class PartyOnlyInjectionTests(unittest.TestCase):
             callback = manager.injector.inject_extra_mods.call_args.args[0]
             self.assertEqual(callback(manager.injector), ["party_2"])
             prepare.assert_called_once()
-        manager._stop_monitor.assert_called_once()
+        manager.start_patcher_in_background.assert_called_once()
+        manager.discard_early_patcher.assert_called_once()
 
     def test_nothing_happens_without_party(self):
         manager = self.make_manager(None)

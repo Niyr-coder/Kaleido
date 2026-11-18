@@ -129,7 +129,8 @@ class LCUAPI:
                     return _store(r.json())
                 except Exception:
                     return _store(None)
-            except requests.exceptions.RequestException:
+            except requests.exceptions.RequestException as e:
+                log.debug(f"[LCU] GET {path} failed after reconnecting: {e}")
                 return None
     
     def put(self, path: str, json_data, timeout: float, headers: Optional[dict] = None) -> Optional[requests.Response]:
@@ -172,7 +173,7 @@ class LCUAPI:
             try:
                 t0 = time.perf_counter()
                 resp = self.connection.session.put(
-                    url,
+                    (self.connection.base or "") + path,
                     json=json_data,
                     timeout=timeout,
                     headers=headers,
@@ -232,6 +233,7 @@ class LCUAPI:
                 except Exception:
                     pass
                 return resp
-            except requests.exceptions.RequestException:
+            except requests.exceptions.RequestException as e:
+                log.debug(f"[LCU] PATCH {path} failed after reconnecting: {e}")
                 return None
 

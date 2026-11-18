@@ -4,14 +4,14 @@
 Mod Package (.modpkg) Reader
 Reads LeagueToolkit's .modpkg format (format version 1, specified in
 docs/design/modpkg.md of LeagueToolkit/league-mod) and unpacks it into the mod
-folder layout mod-tools builds overlays from:
+folder layout Rose packs into a .fantome for LTK Manager:
 
     META/info.json                         written from the package metadata
     META/image.webp                        the package thumbnail, if any
     WAD/<name>.wad.client/<hash>.<ext>     one loose file per chunk
 
-Files are named by their path hash, the key the game and mod-tools use inside
-a WAD, so no path stored in a package ever becomes a file name. Only the base
+Files are named by their path hash, the key the game and a WAD use inside
+one, so no path stored in a package ever becomes a file name. Only the base
 layer is unpacked: other layers are optional content Rose cannot toggle.
 """
 
@@ -54,7 +54,7 @@ _ZSTD = 1
 _MAX_CHUNK_SIZE = 512 * 1024 * 1024
 _DECOMPRESS_STEP = 16 * 1024 * 1024
 
-# mod-tools only reads WAD folders named like the game's WAD files
+# The .fantome format only reads WAD folders named like the game's WAD files
 _WAD_FOLDER = re.compile(r"[a-z0-9_.-]+\.wad(\.client)?")
 _EXTENSION = re.compile(r"\.[a-z0-9_-]{1,16}")
 _HEX_NAME = re.compile(r"[0-9a-fA-F]{16}")
@@ -139,6 +139,7 @@ class ModPackage:
             placed.add((folder, path_hash))
             self._wad_files[f"WAD/{folder}/{path_hash:016x}{_extension(stored_path)}"] = record
         self.optional_layers = sorted(optional_layers)
+        self._cached_layout: Optional[dict[str, Union[bytes, _Record]]] = None
 
     @classmethod
     @contextmanager
@@ -208,7 +209,7 @@ class ModPackage:
         return {}
 
     def _info_json(self) -> bytes:
-        """META/info.json as a .fantome carries it (mod-tools requires the file)"""
+        """META/info.json as a .fantome carries it (the mod name lives there)"""
         metadata = self.metadata()
         authors = metadata.get("authors")
         author_names = [
@@ -226,27 +227,57 @@ class ModPackage:
 
     def _layout(self) -> dict[str, Union[bytes, _Record]]:
         """Relative path -> the bytes or package file it holds, for the unpacked mod"""
-        layout: dict[str, Union[bytes, _Record]] = {"META/info.json": self._info_json()}
-        thumbnail = self._meta_file(_THUMBNAIL_PATH)
-        if thumbnail is not None:
-            layout["META/image.webp"] = thumbnail
-        layout.update(self._wad_files)
+        layout = self._cached_layout
+        if layout is None:
+            layout = {"META/info.json": self._info_json()}
+            thumbnail = self._meta_file(_THUMBNAIL_PATH)
+            if thumbnail is not None:
+                layout["META/image.webp"] = thumbnail
+            layout.update(self._wad_files)
+            self._cached_layout = layout
         return layout
 
     def file_paths(self) -> list[str]:
         """Relative paths of the files in the unpacked mod, without reading them"""
         return sorted(self._layout())
 
+    def read_file(self, relative_path: str) -> bytes:
+        """The bytes of one file of the unpacked mod, by its path in file_paths
+        (KeyError when it has none)"""
+        source = self._layout()[relative_path]
+        return source if isinstance(source, bytes) else self.read(source)
+
+    def file_size(self, relative_path: str) -> int:
+        """The size of one file of the unpacked mod, without reading it (KeyError when it has none)"""
+        source = self._layout()[relative_path]
+        return len(source) if isinstance(source, bytes) else source.uncompressed_size
+
     def iter_files(self) -> Iterator[tuple[str, bytes]]:
         """(relative path, bytes) of every file in the unpacked mod, sorted by path"""
-        layout = self._layout()
-        for relative_path in sorted(layout):
-            source = layout[relative_path]
-            yield relative_path, source if isinstance(source, bytes) else self.read(source)
+        for relative_path in self.file_paths():
+            yield relative_path, self.read_file(relative_path)
+
+
+def is_modpkg(path: Union[str, Path]) -> bool:
+    """Whether the file at *path* is a .modpkg package, whatever its name (a
+    package linked into the injection's mods folder has no extension)."""
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(len(_MAGIC)) == _MAGIC
+    except OSError:  # missing, or a folder
+        return False
+
+
+def check_modpkg(path: Union[str, Path]) -> None:
+    """Raise ModpkgError unless *path* is a .modpkg Rose can inject: its
+    header and table of contents readable, and game files in its base layer."""
+    with ModPackage.open(path) as package:
+        if not package.wad_file_count:
+            raise ModpkgError("The .modpkg has no game files Rose can inject")
 
 
 def extract_modpkg(source: Union[str, Path], dest_dir: Union[str, Path]) -> None:
-    """Unpack a .modpkg into *dest_dir* as a mod folder mod-tools can use"""
+    """Unpack a .modpkg into *dest_dir* as a mod folder Rose can repack"""
     source = Path(source)
     dest_dir = Path(dest_dir)
     with ModPackage.open(source) as package:

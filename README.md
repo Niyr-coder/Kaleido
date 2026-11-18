@@ -11,22 +11,21 @@ de código abierto para League of Legends (licencia MIT, © Alban and Florent). 
 nombre, icono, textos de diálogos e instalador. La lógica interna es la de Rose y toda la documentación
 original sigue aplicando.
 
-## Parcheador LTK (inyección desde el parche 16.19)
+## Inyección a través de LTK Manager (Kaleido 1.6.0)
 
-Desde el parche 16.19 de League (24 de septiembre de 2026) el método de inyección antiguo hace que el juego se
-cierre a los pocos segundos de cargar. Kaleido 1.5.0 incorpora la solución de Rose 1.4.1: la inyección ahora la
-hace el **parcheador LTK** (`ltk_patcher_host.exe` + `ltk_patcher_dll.dll`), y `cslol-dll.dll` ya no se usa
-(Kaleido instala un sustituto propio automáticamente).
+Kaleido 1.6.0 se actualizó a la base de Rose 1.5.8. League Toolkit cambió cómo entrega su parcheador: ya no se
+copian archivos a mano. Ahora Kaleido inyecta **a través de LTK Manager**, que debe estar instalado y mantiene su
+propio parcheador al día automáticamente. Esto resuelve de raíz la caducidad del parcheador: no hay que descargar
+ni reemplazar nada nunca más.
 
-Esa DLL trae una fecha de fin de soporte corta (días a un par de semanas), así que **Kaleido 1.5.1 la descarga y
-actualiza sola** desde el repositorio público de League Toolkit al arrancar, igual que ya hace con los hashes del
-juego. No tienes que copiar nada a mano; cuando está a punto de caducar, Kaleido baja la versión nueva en el
-siguiente arranque (`injection/tools/patcher_downloader.py`, enganchado en el lanzador).
+Requisito: tener **LTK Manager** instalado ([descargas](https://github.com/LeagueToolkit/ltk-manager/releases)).
+Si Kaleido no lo encuentra al arrancar, muestra un aviso con el enlace de descarga y un selector para apuntar a
+`ltk-manager.exe`. Kaleido guarda modelos y texturas locales; LTK Manager solo aporta el motor de inyección.
 
-Solo si Kaleido no puede descargarla (sin internet, o League Toolkit aún no publicó la DLL del nuevo parche)
-aparece un diálogo pidiéndote revisar la conexión o, como último recurso, copiar los dos archivos desde una
-instalación de **LTK Manager** a `C:\Program Files\Kaleido\_internal\injection\tools`. La fuente y el repositorio
-se pueden cambiar en `config.ini` con `ltk_patcher_url`. No pidas ni compartas estos archivos en el Discord de Krealos.
+> **Nota de esta versión:** al rebasar sobre Rose 1.5.8 (que reescribió todo el sistema de inyección y de party),
+> los extras de party exclusivos de Kaleido (grupos permanentes, color de party, retos y ruleta) quedan en pausa en
+> 1.6.0. El modo Party básico por token (compartir la skin con amigos en partida) sigue funcionando sobre el relay
+> de Krealos. El panel en español, los perfiles, favoritos, historial, atajos y la bandeja se conservan.
 
 ## Novedades de Kaleido
 

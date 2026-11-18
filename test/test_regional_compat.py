@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import logging
 from pathlib import Path
 import sys
@@ -6,13 +7,19 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-# Isolate import-time configuration from an installed Rose instance.
+# Isolate configuration from an installed Rose instance. The patch is started in
+# setUpModule, not at import: discovery imports every test module before running
+# any, so an import-time patch leaked into the other modules' tests.
 from utils.core import paths
 _test_data = tempfile.TemporaryDirectory()
-unittest.addModuleCleanup(_test_data.cleanup)
 _path_patch = patch.object(paths, '_cached_user_data_dir', Path(_test_data.name))
-_path_patch.start()
-unittest.addModuleCleanup(_path_patch.stop)
+
+
+def setUpModule():
+    _path_patch.start()
+    unittest.addModuleCleanup(_test_data.cleanup)
+    unittest.addModuleCleanup(_path_patch.stop)
+
 
 import config
 from injection.config.config_manager import ConfigManager
@@ -22,32 +29,66 @@ from lcu.core import lockfile
 from lcu.core.lcu_connection import LCUConnection
 
 
-def process(name='LeagueClientUx.exe', args=None, pid=42, denied=False):
-    proc = SimpleNamespace(info={'name': name}, pid=pid)
+def process(name='LeagueClientUx.exe', args=None, pid=42, denied=False, exe=''):
+    proc = SimpleNamespace(image_name=name, pid=pid)
+    proc.name = Mock(return_value=name)
     proc.cmdline = Mock(return_value=args or ['client', '--app-port=12345', '--remoting-auth-token=test-token'])
+    proc.exe = Mock(return_value=exe)
     if denied:
+        proc.name.side_effect = lockfile.psutil.AccessDenied(pid)
         proc.cmdline.side_effect = lockfile.psutil.AccessDenied(pid)
+        proc.exe.side_effect = lockfile.psutil.AccessDenied(pid)
     return proc
+
+
+@contextmanager
+def running(*procs):
+    """These stand-ins as the running processes"""
+    by_pid = {proc.pid: proc for proc in procs}
+
+    def open_process(pid):
+        if pid not in by_pid:
+            raise lockfile.psutil.NoSuchProcess(pid)
+        return by_pid[pid]
+
+    def read_cmdline(pid):
+        # query_cmdline returns None where the process cannot be read
+        try:
+            return open_process(pid).cmdline()
+        except lockfile.psutil.Error:
+            return None
+
+    entries = [(proc.pid, proc.image_name) for proc in procs]
+    with patch.object(lockfile, 'running_processes', return_value=entries) as snapshot, \
+            patch.object(lockfile.psutil, 'Process', side_effect=open_process), \
+            patch.object(lockfile, 'query_cmdline', side_effect=read_cmdline):
+        yield snapshot
 
 
 class CredentialsTests(unittest.TestCase):
     def test_equals_arguments(self):
-        with patch.object(lockfile.psutil, 'process_iter', return_value=[process()]):
+        with running(process()):
             result = lockfile.find_process_credentials()
         self.assertEqual((result.port, result.password, result.protocol), (12345, 'test-token', 'https'))
 
     def test_separate_quoted_arguments(self):
         proc = process(name='LEAGUECLIENTUX.EXE', args=['client', '--app-port', '12345', '--remoting-auth-token', '"quoted-token"'])
-        with patch.object(lockfile.psutil, 'process_iter', return_value=[proc]):
+        with running(proc):
             self.assertEqual(lockfile.find_process_credentials().password, 'quoted-token')
 
     def test_access_denied_client_does_not_block_ux(self):
-        with patch.object(lockfile.psutil, 'process_iter', return_value=[process('LeagueClient.exe', denied=True), process()]):
+        with running(process('LeagueClient.exe', pid=41, denied=True), process()):
             self.assertIsNotNone(lockfile.find_process_credentials())
+
+    def test_main_client_command_line_not_read(self):
+        proc = process('LeagueClient.exe')
+        with running(proc):
+            self.assertIsNone(lockfile.find_process_credentials())
+        proc.cmdline.assert_not_called()
 
     def test_unrelated_process_not_read(self):
         proc = process('Other.exe')
-        with patch.object(lockfile.psutil, 'process_iter', return_value=[proc]):
+        with running(proc):
             self.assertIsNone(lockfile.find_process_credentials())
         proc.cmdline.assert_not_called()
 
@@ -55,8 +96,99 @@ class CredentialsTests(unittest.TestCase):
         for args in (['--app-port=0', '--remoting-auth-token=x'], ['--app-port=65536', '--remoting-auth-token=x'],
                      ['--app-port=invalid', '--remoting-auth-token=x'], ['--app-port=12345'],
                      ['--app-port=12345', '--remoting-auth-token=']):
-            with self.subTest(args=args), patch.object(lockfile.psutil, 'process_iter', return_value=[process(args=args)]):
+            with self.subTest(args=args), running(process(args=args)):
                 self.assertIsNone(lockfile.find_process_credentials())
+
+    def test_lockfile_found_beside_a_client_installed_elsewhere(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'lockfile'
+            path.write_text('LeagueClient:42:12345:sample:https', encoding='utf-8')
+            denied = process('LeagueClient.exe', pid=41, denied=True)
+            client = process(exe=str(Path(folder) / 'LeagueClientUx.exe'))
+            with patch.dict(lockfile.os.environ, {'LCU_LOCKFILE': ''}), \
+                    patch.object(lockfile, 'get_config_option', return_value=None), \
+                    patch.object(Path, 'is_file', lambda self: self == path), \
+                    running(process('Other.exe', pid=40), denied, client):
+                self.assertEqual(lockfile.find_lockfile(), str(path))
+
+    def test_lockfile_in_the_saved_client_folder_needs_no_process_list(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'lockfile'
+            path.write_text('LeagueClient:42:12345:sample:https', encoding='utf-8')
+            with running(process()), patch.dict(lockfile.os.environ, {'LCU_LOCKFILE': ''}), \
+                    patch.object(lockfile, 'get_config_option', return_value=f' {folder} ') as saved, \
+                    patch.object(lockfile, 'running_processes', side_effect=AssertionError('processes listed')):
+                self.assertEqual(lockfile.find_lockfile(), str(path))
+            saved.assert_called_once_with('General', 'clientPath')
+
+    def test_saved_lockfile_works_when_process_details_are_denied(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'lockfile'
+            path.write_text('LeagueClient:42:23456:file-token:https', encoding='utf-8')
+            client = process(denied=True)
+            with running(client) as snapshot, patch.dict(lockfile.os.environ, {'LCU_LOCKFILE': ''}), \
+                    patch.object(lockfile, 'get_config_option', return_value=folder), \
+                    patch.object(Path, 'is_file', lambda candidate: candidate == path), \
+                    patch.object(LCUConnection, '_check_client_elevation'):
+                connection = LCUConnection()
+
+            self.assertEqual(connection.websocket_credentials(), (23456, 'file-token'))
+            client.name.assert_called_once_with()
+            client.cmdline.assert_not_called()
+            snapshot.assert_not_called()
+
+    def test_empty_saved_lockfile_uses_one_snapshot_per_refresh(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'lockfile'
+            path.touch()
+            client = process()
+            with running(client) as snapshot, patch.dict(lockfile.os.environ, {'LCU_LOCKFILE': ''}), \
+                    patch.object(lockfile, 'get_config_option', return_value=folder), \
+                    patch.object(Path, 'is_file', lambda candidate: candidate == path), \
+                    patch.object(LCUConnection, '_check_client_elevation'):
+                connection = LCUConnection()
+                snapshot.assert_called_once_with()
+                self.assertEqual(connection.lf_path, str(path))
+                self.assertEqual(connection.websocket_credentials(), (12345, 'test-token'))
+
+                snapshot.reset_mock()
+                connection.refresh_if_needed(force=True)
+                snapshot.assert_called_once_with()
+                self.assertEqual(connection.websocket_credentials(), (12345, 'test-token'))
+
+            client.exe.assert_not_called()
+            client.name.assert_not_called()
+
+    def test_stale_saved_lockfile_falls_back_to_the_active_client(self):
+        with tempfile.TemporaryDirectory() as folder:
+            saved_dir = Path(folder) / 'old'
+            saved_dir.mkdir()
+            stale = saved_dir / 'lockfile'
+            stale.write_text('LeagueClient:41:11111:old:https', encoding='utf-8')
+            active = Path(folder) / 'lockfile'
+            active.write_text('LeagueClient:42:12345:active:https', encoding='utf-8')
+            client = process(exe=str(Path(folder) / 'LeagueClientUx.exe'))
+            common = 'C:/Riot Games/League of Legends/lockfile'
+
+            cases = (
+                ('expired PID, common path', (client,), active),
+                ('reused PID, process scan', (process('Other.exe', pid=41), client), stale),
+            )
+            for scenario, procs, common_lockfile in cases:
+                def map_common_path(path):
+                    return common_lockfile if path == common else Path(path)
+
+                with self.subTest(scenario=scenario), running(*procs), \
+                        patch.dict(lockfile.os.environ, {'LCU_LOCKFILE': ''}), \
+                        patch.object(lockfile, 'get_config_option', return_value=str(saved_dir)), \
+                        patch.object(lockfile, 'Path', side_effect=map_common_path), \
+                        patch.object(Path, 'is_file', lambda path: path in (stale, active)), \
+                        patch.object(LCUConnection, '_check_client_elevation'):
+                    connection = LCUConnection()
+                    self.assertEqual(connection.lf_path, str(active))
+                    self.assertEqual(connection.port, 12345)
+                    connection.refresh_if_needed(force=True)
+                    self.assertEqual(connection.port, 12345)
 
     def test_normal_lockfile(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -97,6 +229,17 @@ class ConnectionTests(unittest.TestCase):
         connection._next_credentials_check = 0
         connection.refresh_if_needed()
         self.assertIs(connection.session, session)
+
+    def test_forced_refresh_with_same_credentials_keeps_connection(self):
+        connection = LCUConnection()
+        session = connection.session
+        with patch('lcu.core.lcu_connection.log_section') as log_section, \
+             patch.object(LCUConnection, '_check_client_elevation') as elevation:
+            connection.refresh_if_needed(force=True)
+        self.proc.assert_called()
+        self.assertIs(connection.session, session)
+        log_section.assert_not_called()
+        elevation.assert_not_called()
 
     def test_restart_rotates_credentials(self):
         connection = LCUConnection()
@@ -202,20 +345,30 @@ class OverlayLifetimeTests(unittest.TestCase):
     the client (and so the phase) goes away mid-match as on CN/WeGame."""
 
     def setUp(self):
-        from injection.overlay import overlay_manager
+        from injection.overlay import ltf_report, overlay_manager
+        from injection.overlay.ltf_session import LtfSession
         from injection.overlay.overlay_manager import OverlayManager
         self.module = overlay_manager
-        self.manager = OverlayManager(Path('tools'), Path('mods'), Path('game'))
-        self.patcher = SimpleNamespace(returncode=None)
-        self.patcher.poll = lambda: self.patcher.returncode
-        self.session = {'proc': self.patcher, 'session': {'state': None, 'error': None, 'eol': False},
-                        'reader': Mock(), 'log': None}
-        stop = self.enterContext(patch.object(self.manager, '_stop_ltk_patcher'))
-        stop.side_effect = lambda proc: proc.returncode is None and setattr(proc, 'returncode', 0)
-        self.stop = stop
-        self.enterContext(patch.object(self.manager, '_wipe_overlay_dir'))
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.manager = OverlayManager(root / 'tools', root / 'mods', root / 'game')
+        self.bridge = SimpleNamespace(
+            is_alive=True,
+            stop_patcher=Mock(return_value={'ok': True}),
+            kill=Mock(return_value={'ok': True}),
+            uninstall=Mock(return_value={'ok': True}),
+            patcher_status=Mock(return_value={'ok': True, 'response': {
+                'ok': True,
+                'value': {'running': True, 'phase': 'patching', 'session': {}, 'changesAfterGame': False},
+            }}),
+            alive=lambda: self.bridge.is_alive,
+        )
+        self.session = self.manager._new_session(LtfSession(self.bridge, rose_started_manager=False))
         self.enterContext(patch.object(overlay_manager.time, 'sleep'))
+        self.enterContext(patch.object(overlay_manager, 'PATCHER_STATUS_POLL_TICKS', 1))
         self.report = self.enterContext(patch.object(overlay_manager, 'report_issue'))
+        self.enterContext(patch.object(ltf_report, 'report_issue', self.report))
 
     def game(self, timeouts=0, on_wait=None):
         """A game process that exits after `timeouts` one-second waits."""
@@ -229,40 +382,41 @@ class OverlayLifetimeTests(unittest.TestCase):
                 raise self.module.psutil.TimeoutExpired(timeout)
         return SimpleNamespace(wait=Mock(side_effect=wait))
 
-    def run_patcher(self, stop_callback):
-        return self.manager._run_ltk_patcher(self.session, Path('overlay'), stop_callback)
+    def run_patcher(self, stop_callback, game=None):
+        with patch.object(self.manager, '_running_game', return_value=game):
+            return self.manager._run_session(self.session, stop_callback)
 
     def test_client_gone_keeps_patcher_until_the_game_exits(self):
         game = self.game(timeouts=2)
-        with patch.object(self.manager, '_running_game', return_value=game):
-            self.assertEqual(self.run_patcher(lambda: True), 0)
+        self.assertEqual(self.run_patcher(lambda: True, game=game), 0)
         self.assertEqual(game.wait.call_count, 3)
-        self.stop.assert_called_once()
+        self.bridge.stop_patcher.assert_called_once()
 
     def test_game_over_stops_patcher(self):
-        with patch.object(self.manager, '_running_game', return_value=None):
-            self.assertEqual(self.run_patcher(lambda: True), 0)
-        self.stop.assert_called_once()
+        self.assertEqual(self.run_patcher(lambda: True, game=None), 0)
+        self.bridge.stop_patcher.assert_called_once()
         self.report.assert_not_called()
 
     def test_reconnect_after_the_game_exits_keeps_patcher(self):
         phases = iter([True, False, True])
         running = iter([self.game(), None])
         with patch.object(self.manager, '_running_game', side_effect=lambda: next(running)):
-            self.assertEqual(self.run_patcher(lambda: next(phases)), 0)
-        self.stop.assert_called_once()
+            self.assertEqual(self.manager._run_session(self.session, lambda: next(phases)), 0)
+        self.bridge.stop_patcher.assert_called_once()
 
     def test_patcher_dying_while_waiting_is_still_reported(self):
-        game = self.game(timeouts=5, on_wait=lambda: setattr(self.patcher, 'returncode', 3))
-        with patch.object(self.manager, '_running_game', return_value=game):
-            self.assertEqual(self.run_patcher(lambda: True), 3)
+        game = self.game(timeouts=5, on_wait=lambda: setattr(self.bridge, 'is_alive', False))
+        self.assertEqual(self.run_patcher(lambda: True, game=game), 1)
         self.report.assert_called_once()
 
     def test_game_detection_accepts_both_names(self):
         for name in config.GAME_EXECUTABLE_NAMES:
-            proc = SimpleNamespace(info={'name': name})
-            with self.subTest(name=name), patch.object(self.module.psutil, 'process_iter', return_value=[proc]):
+            proc = SimpleNamespace(pid=42, name=Mock(return_value=name))
+            with self.subTest(name=name), \
+                    patch.object(self.module, 'running_processes', return_value=[(42, name)]), \
+                    patch.object(self.module.psutil, 'Process', return_value=proc) as opened:
                 self.assertIs(self.manager._running_game(), proc)
+                opened.assert_called_once_with(42)
 
 
 class LoaderFallbackTests(unittest.TestCase):
@@ -272,9 +426,10 @@ class LoaderFallbackTests(unittest.TestCase):
     def setUp(self):
         from utils.integration import pengu_loader
         self.loader = pengu_loader
-        self.loader._restart_pending = False
-        self.addCleanup(setattr, self.loader, '_restart_pending', False)
+        self.loader._restart_pending = frozenset()
+        self.addCleanup(setattr, self.loader, '_restart_pending', frozenset())
         self.processes = self.enterContext(patch.object(self.loader, '_process_running', return_value=False))
+        self.ux_pids = self.enterContext(patch.object(self.loader, '_process_ids', return_value=frozenset()))
         self.external = self.enterContext(patch.object(self.loader, '_external_pengu_with_rose_plugins', return_value=None))
         self.registered = self.enterContext(patch.object(self.loader, '_registered_pengu_core', return_value=None))
         self.enterContext(patch.object(self.loader, '_is_available', return_value=True))
@@ -312,18 +467,33 @@ class LoaderFallbackTests(unittest.TestCase):
         self.activate.assert_not_called()
 
     def test_deferred_restart_happens_at_a_safe_phase(self):
-        self.loader._restart_pending = True
-        self.processes.side_effect = lambda names: 'LeagueClientUx.exe' in names
+        self.loader._restart_pending = frozenset({1234})
+        self.ux_pids.return_value = frozenset({1234})
         self.loader.retry_deferred_restart()
         self.restart.assert_called_once()
         self.assertFalse(self.loader._restart_pending)
+
+    def test_refused_restart_stays_deferred(self):
+        self.loader._restart_pending = frozenset({1234})
+        self.ux_pids.return_value = frozenset({1234})
+        self.restart.return_value = False
+        self.loader.retry_deferred_restart()
+        self.assertEqual(self.loader._restart_pending, frozenset({1234}))
 
     def test_nothing_deferred_nothing_restarted(self):
         self.loader.retry_deferred_restart()
         self.restart.assert_not_called()
 
     def test_closed_client_needs_no_restart(self):
-        self.loader._restart_pending = True
+        self.loader._restart_pending = frozenset({1234})
+        self.loader.retry_deferred_restart()
+        self.restart.assert_not_called()
+        self.assertFalse(self.loader._restart_pending)
+
+    def test_reopened_client_needs_no_restart(self):
+        # The client was closed and reopened: the new one loads the registered loader
+        self.loader._restart_pending = frozenset({1234})
+        self.ux_pids.return_value = frozenset({5678})
         self.loader.retry_deferred_restart()
         self.restart.assert_not_called()
         self.assertFalse(self.loader._restart_pending)

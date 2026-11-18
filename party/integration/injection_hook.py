@@ -5,20 +5,23 @@ Party Injection Hook
 Integrates party mode skin collection with injection flow
 """
 
+from dataclasses import replace
 from pathlib import Path
 from typing import List, Optional
 
 from injection.classic import is_classic_game_mode
+from injection.mods.manifest import find_saved_mod
+from injection.mods.mod_source import RoseFile
 from state import SharedState
-from utils.core.junction import is_junction, link_or_extract, safe_remove_entry
 from utils.core.logging import get_logger
-from utils.core.paths import get_injection_dir
 
 from ..core.party_manager import PartyManager
 from ..discovery.custom_mods import get_mods_root
 from ..discovery.skin_collector import PartySkinData
 
 log = get_logger()
+
+PARTY_FOLDER_PREFIX = "party_"
 
 
 class PartyInjectionHook:
@@ -133,82 +136,11 @@ class PartyInjectionHook:
         Returns:
             Mod folder name or None if preparation failed
         """
-        source = None
-
-        if skin_data.custom_mod_path and classic:
-            # Custom mods target the regular characters, which Classic doesn't load
-            log.info(
-                f"[PARTY_INJECT] Rift Classic: {skin_data.summoner_name}'s custom mod "
-                f"does not apply, using the Classic skin"
-            )
-        elif skin_data.custom_mod_path:
-            # Our own copy of the party member's custom mod (folder or archive)
-            local_mod = get_mods_root() / skin_data.custom_mod_path
-            if local_mod.exists():
-                log.info(
-                    f"[PARTY_INJECT] {skin_data.summoner_name} has custom mod, "
-                    f"using local match: {skin_data.custom_mod_path}"
-                )
-                source = local_mod
-            else:
-                log.warning(
-                    f"[PARTY_INJECT] Custom mod path not found: {skin_data.custom_mod_path}"
-                )
-
-        if source is None:
-            source = self._resolve_skin_zip(skin_data, injector, classic)
-        if source is None:
-            return None
-
-        # Prefixed so it never collides with our own mod folder
-        mod_folder_name = f"party_{skin_data.summoner_id}"
-        mod_dest = injector.mods_dir / mod_folder_name
-        if mod_dest.exists() or is_junction(mod_dest):
-            safe_remove_entry(mod_dest)
-
-        # Cached extraction: the same skin is instant in later games
-        link_or_extract(source, mod_dest, cache_dir=get_injection_dir() / ".extract_cache")
-        if not (mod_dest.exists() or is_junction(mod_dest)):
-            log.warning(f"[PARTY_INJECT] Mod folder missing after extraction: {mod_dest}")
-            return None
-
-        log.info(
-            f"[PARTY_INJECT] Prepared {skin_data.summoner_name}'s skin: {source.name}"
-        )
-        return mod_folder_name
+        return prepare_peer_skin(skin_data, injector, classic=classic)
 
     @staticmethod
     def _resolve_skin_zip(skin_data: PartySkinData, injector, classic: bool = False) -> Optional[Path]:
-        """Find the skin (or chroma) file of a party member's official skin"""
-        skin_name = f"skin_{skin_data.skin_id}"
-
-        if skin_data.chroma_id:
-            zip_path = injector._resolve_zip(
-                skin_name,
-                chroma_id=skin_data.chroma_id,
-                skin_name=skin_name,
-                champion_name=None,
-                champion_id=skin_data.champion_id,
-                classic=classic,
-            )
-            if zip_path and zip_path.exists():
-                return zip_path
-            log.info(
-                f"[PARTY_INJECT] Chroma {skin_data.chroma_id} not found, "
-                f"using base skin {skin_data.skin_id}"
-            )
-
-        zip_path = injector._resolve_zip(
-            skin_name,
-            skin_name=skin_name,
-            champion_name=None,
-            champion_id=skin_data.champion_id,
-            classic=classic,
-        )
-        if not zip_path or not zip_path.exists():
-            log.warning(f"[PARTY_INJECT] Could not find skin ZIP for {skin_name}")
-            return None
-        return zip_path
+        return _resolve_skin_zip(skin_data, injector, classic)
 
     def get_injection_summary(self) -> dict:
         """Get summary of party injection status
@@ -238,3 +170,106 @@ class PartyInjectionHook:
                 for s in party_skins
             ],
         }
+
+
+def prepare_peer_skin(
+    skin_data: PartySkinData,
+    injector,
+    classic: bool = False,
+    mods_dir: Optional[Path] = None,
+) -> Optional[str]:
+    """Prepare a party member's skin in *mods_dir* (the injector's by default)
+
+    The loadout countdown stages it in a folder of its own
+    (injection.core.stage_plan), the same way the injection prepares it.
+
+    Args:
+        skin_data: Party member's skin data
+        injector: Injector instance
+        classic: Rift Classic game (skins from the Classic library)
+        mods_dir: Where the mod folder goes
+
+    Returns:
+        Mod folder name or None if preparation failed
+    """
+    mods_dir = Path(mods_dir) if mods_dir is not None else injector.mods_dir
+    mod_folder_name = f"{PARTY_FOLDER_PREFIX}{skin_data.summoner_id}"
+    mod = None
+    label = skin_data.custom_mod_path
+
+    if skin_data.custom_mod_path and classic:
+        # Custom mods target the regular characters, which Classic doesn't load
+        log.info(
+            f"[PARTY_INJECT] Rift Classic: {skin_data.summoner_name}'s custom mod "
+            f"does not apply, using the Classic skin"
+        )
+    elif skin_data.custom_mod_path:
+        mod = _local_custom_mod(skin_data.custom_mod_path, mod_folder_name)
+        if mod is not None:
+            log.info(
+                f"[PARTY_INJECT] {skin_data.summoner_name} has custom mod, "
+                f"using local match: {skin_data.custom_mod_path}"
+            )
+        else:
+            log.warning(
+                f"[PARTY_INJECT] Custom mod path not found: {skin_data.custom_mod_path}"
+            )
+
+    if mod is None:
+        skin_zip = _resolve_skin_zip(skin_data, injector, classic)
+        if skin_zip is None:
+            return None
+        mod, label = RoseFile(skin_zip, mod_folder_name), skin_zip.name
+
+    name = mod.put(mods_dir)
+    if name is None:
+        log.warning(f"[PARTY_INJECT] Mod folder missing after extraction: {mods_dir / mod_folder_name}")
+        return None
+
+    log.info(f"[PARTY_INJECT] Prepared {skin_data.summoner_name}'s skin: {label}")
+    return name
+
+
+def _local_custom_mod(relative_path: str, folder_name: str) -> Optional[RoseFile]:
+    """Our own copy of a friend's custom mod: a saved mod's file, or a file
+    nobody registered, linked as *folder_name* beside our own pick of it.
+    None when it is not there."""
+    mods_root = get_mods_root()
+    saved = find_saved_mod(mods_root, relative_path)
+    if saved is not None:
+        return replace(saved.source, linked_name=folder_name) if saved.available else None
+    local_mod = mods_root / relative_path
+    return RoseFile(local_mod, folder_name) if local_mod.exists() else None
+
+
+def _resolve_skin_zip(skin_data: PartySkinData, injector, classic: bool = False) -> Optional[Path]:
+    """Find the skin (or chroma) file of a party member's official skin"""
+    skin_name = f"skin_{skin_data.skin_id}"
+
+    if skin_data.chroma_id:
+        zip_path = injector._resolve_zip(
+            skin_name,
+            chroma_id=skin_data.chroma_id,
+            skin_name=skin_name,
+            champion_name=None,
+            champion_id=skin_data.champion_id,
+            classic=classic,
+        )
+        if zip_path and zip_path.exists():
+            return zip_path
+        log.info(
+            f"[PARTY_INJECT] Chroma {skin_data.chroma_id} not found, "
+            f"using base skin {skin_data.skin_id}"
+        )
+
+    zip_path = injector._resolve_zip(
+        skin_name,
+        skin_name=skin_name,
+        champion_name=None,
+        champion_id=skin_data.champion_id,
+        classic=classic,
+    )
+    if not zip_path or not zip_path.exists():
+        log.warning(f"[PARTY_INJECT] Could not find skin ZIP for {skin_name}")
+        return None
+    return zip_path

@@ -66,12 +66,18 @@ class LCU:
         """Refresh connection if needed"""
         self._connection.refresh_if_needed(force)
 
+    def lockfile_folders(self):
+        """The existing folders a client's lockfile can appear in."""
+        return self._connection.lockfile_folders()
+
     def websocket_credentials(self):
         """Return a consistent port/password snapshot for the LCU WebSocket."""
         return self._connection.websocket_credentials()
     
-    def get(self, path: str, timeout: float = 1.0):
+    def get(self, path: str, timeout: float = 1.0, *, use_cache: bool = True):
         """Make GET request to LCU API"""
+        if not use_cache:
+            return self._api.get(path, timeout, use_cache=False)
         return self._api.get(path, timeout)
     
     # Properties (delegated to properties handler)

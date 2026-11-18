@@ -8,13 +8,13 @@ Handles connection initialization, refresh, and lifecycle
 import time
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import requests
 
 from utils.core.logging import get_logger, log_section, log_success
 
-from .lockfile import find_lockfile, parse_lockfile, find_process_credentials
+from .lockfile import find_lockfile, lockfile_folders, parse_lockfile, find_process_credentials
 
 log = get_logger()
 
@@ -35,6 +35,7 @@ class LCUConnection:
         self.session = self._prepare_session()
         self._explicit_lockfile = lockfile_path
         self.lf_path = None
+        self._seen_lockfile_dir: Optional[str] = None
         self.lf_mtime = 0.0
         self._next_credentials_check = 0.0
         self._lock = threading.RLock()
@@ -51,11 +52,14 @@ class LCUConnection:
         })  # explicit None keeps Requests from re-reading env vars later
         return session
     
-    def _init_from_lockfile(self, force: bool = False):
+    def _init_from_lockfile(self):
         """Initialize from lockfile or a running regional client's arguments."""
         previous_path = self.lf_path
         lf = find_lockfile(self._explicit_lockfile)
         self.lf_path = lf
+        if lf:
+            # Kept once the client closes: where to wait for it to come back
+            self._seen_lockfile_dir = str(Path(lf).parent)
         self._next_credentials_check = time.monotonic() + 1.0
         
         try:
@@ -72,8 +76,7 @@ class LCUConnection:
             new_credentials = (lockfile_data.port, lockfile_data.password)
             current_credentials = (self.port, self.pw)
             same_connection = (
-                not force
-                and self.ok
+                self.ok
                 and previous_path == lf
                 and current_credentials == new_credentials
             )
@@ -84,9 +87,11 @@ class LCUConnection:
                 log.debug(f"Failed to get lockfile mtime: {e}")
                 self.lf_mtime = time.time()
 
-            # League may touch the lockfile without changing its endpoint.
-            # Do not rebuild the HTTP session or report a false reconnect in
-            # that case; several threads call refresh_if_needed().
+            # League may touch the lockfile without changing its endpoint, and
+            # every failed request forces a re-read. Do not rebuild the HTTP
+            # session or report a false reconnect in that case; several threads
+            # call refresh_if_needed(). urllib3 already drops a broken pooled
+            # connection, so the retry does not need a new session.
             if same_connection:
                 return
 
@@ -103,9 +108,20 @@ class LCUConnection:
             self.session.headers.update({"Content-Type": "application/json"})
             self.ok = True
             log_section(log, "LCU Connected", "", {"Port": self.port, "Status": "Ready", "Source": source})
+            self._check_client_elevation(lockfile_data.pid)
         except Exception as e:
             self._disable(f"LCU unavailable: {e}")
     
+    @staticmethod
+    def _check_client_elevation(pid: int) -> None:
+        """LTK Manager can't patch a League client started as administrator:
+        say so now rather than after a game without the skin (#431)."""
+        try:
+            from utils.system.windows_account import check_league_client
+            check_league_client(pid)
+        except Exception as e:  # a diagnostic must never break the connection
+            log.debug(f"[LCU] Could not check the client's elevation: {e}")
+
     def _disable(self, reason: str):
         """Disable LCU connection"""
         if self.ok: 
@@ -116,13 +132,17 @@ class LCUConnection:
         self.pw = None
         self.session = self._prepare_session()
     
+    def lockfile_folders(self) -> List[Path]:
+        """The existing folders a client's lockfile can appear in."""
+        return lockfile_folders(self._explicit_lockfile, [self._seen_lockfile_dir])
+
     def refresh_if_needed(self, force: bool = False):
         """Refresh once per second, including tokens rotated on client restart."""
         with self._lock:
             if not force and time.monotonic() < self._next_credentials_check:
                 return
             old = (self.port, self.pw)
-            self._init_from_lockfile(force=force)
+            self._init_from_lockfile()
             new = (self.port, self.pw)
             if self.ok and old != new:
                 log_success(log, f"LCU reloaded (port={self.port})", "")

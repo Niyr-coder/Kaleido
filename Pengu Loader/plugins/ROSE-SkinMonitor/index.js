@@ -8,6 +8,7 @@
 console.log("[SkinMonitor] Plugin loaded");
 
 const LOG_PREFIX = "[SkinMonitor]";
+let skinSyncErrorLogged = false;
 const STATE_EVENT = "lu-skin-monitor-state";
 const SKIN_SELECTORS = [
   ".skin-name-text", // Classic Champ Select
@@ -20,10 +21,11 @@ const RETRY_MAX_MS = 30000;
 let BRIDGE_PORT = 50000; // Default, will be updated from /bridge-port endpoint
 let BRIDGE_URL = `ws://127.0.0.1:${BRIDGE_PORT}`;
 const BRIDGE_PORT_STORAGE_KEY = "rose_bridge_port";
+// Every port Rose's bridge can take (BRIDGE_FIRST_PORT, BRIDGE_PORT_COUNT in pengu/core/skin_monitor.py)
 const DISCOVERY_START_PORT = 50000;
-const DISCOVERY_END_PORT = 50010;
+const DISCOVERY_END_PORT = 50099;
 
-async function loadBridgePort() {
+async function loadBridgePort({ legacy = true } = {}) {
   try {
     // First, check localStorage for cached port
     const cachedPort = localStorage.getItem(BRIDGE_PORT_STORAGE_KEY);
@@ -46,8 +48,8 @@ async function loadBridgePort() {
             }
           }
         } catch (e) {
-          // Cached port invalid, continue to discovery
-          localStorage.removeItem(BRIDGE_PORT_STORAGE_KEY);
+          // Not answering (Rose may not be running yet): keep the cached port,
+          // discovery below overwrites it if Rose is found on another one
         }
       }
     }
@@ -128,6 +130,10 @@ async function loadBridgePort() {
       }
     }
 
+    // A retry skips the legacy scan: the server that answers /port answers
+    // /bridge-port too, so it cannot find what the scan above did not
+    if (!legacy) return false;
+
     // Fallback: try old /port endpoint (parallel as well)
     const legacyPromises = [];
     for (let port = DISCOVERY_START_PORT; port <= DISCOVERY_END_PORT; port++) {
@@ -185,6 +191,7 @@ let retryDelay = RETRY_BASE_MS;
 // --- Bridge subscription infrastructure ---
 const _subscribers = new Map(); // type -> Set<callback>
 const _readyCallbacks = new Set();
+const _disconnectCallbacks = new Set();
 
 function subscribe(type, cb) {
   if (!_subscribers.has(type)) _subscribers.set(type, new Set());
@@ -199,6 +206,11 @@ function unsubscribe(type, cb) {
 function onReady(cb) {
   _readyCallbacks.add(cb);
   if (bridgeReady) cb();
+}
+
+// Called when an open connection to Rose closes (not on failed reconnect attempts)
+function onDisconnect(cb) {
+  _disconnectCallbacks.add(cb);
 }
 
 function _notifySubscribers(data) {
@@ -216,6 +228,14 @@ function _notifyReady() {
   for (const cb of _readyCallbacks) {
     try { cb(); } catch (e) {
       console.warn(`${LOG_PREFIX} onReady callback error:`, e);
+    }
+  }
+}
+
+function _notifyDisconnect() {
+  for (const cb of _disconnectCallbacks) {
+    try { cb(); } catch (e) {
+      console.warn(`${LOG_PREFIX} onDisconnect callback error:`, e);
     }
   }
 }
@@ -244,8 +264,12 @@ function resyncSkinAfterConnect() {
       originalName: name,
       timestamp: Date.now(),
     });
-  } catch {
-    // ignore
+  } catch (e) {
+    // Rose would inject without knowing the hovered skin: say why, once
+    if (!skinSyncErrorLogged) {
+      skinSyncErrorLogged = true;
+      console.warn(`${LOG_PREFIX} Could not send the hovered skin to Rose:`, e);
+    }
   }
 }
 
@@ -345,12 +369,17 @@ function setupBridgeSocket() {
       console.warn(`${LOG_PREFIX} Bridge socket setup failed`, error);
       bridgeSetupWarned = true;
     }
-    scheduleBridgeRetry();
+    scheduleBridgeRetry(true);
     return;
   }
 
+  let opened = false;
   bridgeSocket.addEventListener("open", () => {
+    opened = true;
     bridgeReady = true;
+    bridgeSocket.send(JSON.stringify({
+      type: "rose-plugin-ready", plugin: "ROSE-SkinMonitor", protocol: 1,
+    }));
     retryDelay = RETRY_BASE_MS;
     if (retryTimer) {
       clearTimeout(retryTimer);
@@ -443,7 +472,8 @@ function setupBridgeSocket() {
 
   bridgeSocket.addEventListener("close", () => {
     bridgeReady = false;
-    scheduleBridgeRetry();
+    if (opened) _notifyDisconnect();
+    scheduleBridgeRetry(!opened);
   });
 
   bridgeSocket.addEventListener("error", (error) => {
@@ -452,7 +482,7 @@ function setupBridgeSocket() {
       bridgeErrorLogged = true;
     }
     bridgeReady = false;
-    scheduleBridgeRetry();
+    scheduleBridgeRetry(!opened);
   });
 }
 
@@ -474,7 +504,7 @@ function flushBridgeQueue() {
   }
 }
 
-function scheduleBridgeRetry() {
+function scheduleBridgeRetry(rediscoverPort = false) {
   if (bridgeReady || stopped) {
     return;
   }
@@ -483,7 +513,10 @@ function scheduleBridgeRetry() {
     return;
   }
 
-  retryTimer = setTimeout(() => {
+  retryTimer = setTimeout(async () => {
+    // Rose was not on this port: it may have started after the client, or
+    // restarted, on another one. Look again so this retry goes to the right one
+    if (rediscoverPort) await loadBridgePort({ legacy: false });
     retryTimer = null;
     setupBridgeSocket();
   }, retryDelay);
@@ -654,6 +687,7 @@ async function start() {
       subscribe,
       unsubscribe,
       onReady,
+      onDisconnect,
       get port() { return BRIDGE_PORT; },
       get ready() { return bridgeReady; },
     });
@@ -703,4 +737,6 @@ function whenReady(callback) {
 }
 
 whenReady(start);
-window.addEventListener("beforeunload", stop);
+// pagehide, not beforeunload: the client fires beforeunload without leaving the
+// page, and stop() would end the bridge for every plugin until League restarts
+window.addEventListener("pagehide", stop);

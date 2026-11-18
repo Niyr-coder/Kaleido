@@ -169,7 +169,7 @@
   let BRIDGE_URL = `ws://127.0.0.1:${BRIDGE_PORT}`;
   const BRIDGE_PORT_STORAGE_KEY = "rose_bridge_port";
   const DISCOVERY_START_PORT = 50000;
-  const DISCOVERY_END_PORT = 50010;
+  const DISCOVERY_END_PORT = 50099;
 
   const PANEL_ID = "rose-party-panel";
   const BUTTON_ID = "rose-party-button";

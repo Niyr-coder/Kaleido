@@ -1,7 +1,23 @@
+import { readIdentity } from './room';
 export { PartyRoom } from './room';
 
 interface Env {
   ROOM: DurableObjectNamespace;
+}
+
+// Rose before this version could keep a room awake all day (reconnecting every
+// 100s when its pings never got through): it is refused here, before waking the
+// room, and Rose 1.4.2+ stops retrying on this status. Older Rose sends no version
+const MIN_VERSION = [1, 4, 4];
+
+function supported(version: string | null): boolean {
+  if (!version) return false;
+  const parts = version.split('.').map((part) => parseInt(part, 10));
+  for (let i = 0; i < MIN_VERSION.length; i++) {
+    const part = Number.isFinite(parts[i]) ? parts[i] : 0;
+    if (part !== MIN_VERSION[i]) return part > MIN_VERSION[i];
+  }
+  return true;
 }
 
 export default {
@@ -17,13 +33,20 @@ export default {
 
     // WebSocket upgrade at /room?key=<room_id>
     const upgrade = request.headers.get('Upgrade');
-    if (upgrade?.toLowerCase() === 'websocket') {
+    if (url.pathname === '/room' && request.method === 'GET' && upgrade?.toLowerCase() === 'websocket') {
       const roomKey = url.searchParams.get('key');
-      if (!roomKey || roomKey.length < 8 || roomKey.length > 64) {
+      if (!roomKey || !/^[0-9a-f]{32}$/.test(roomKey)) {
         return new Response('Invalid room key', { status: 400 });
       }
+      if (url.searchParams.get('p') !== '2' || !supported(url.searchParams.get('v'))) {
+        return new Response('Update Rose to use party mode', { status: 426 });
+      }
+      if (!readIdentity(request.headers)) {
+        return new Response('Invalid party identity', { status: 400 });
+      }
 
-      const id = env.ROOM.idFromName(roomKey);
+      // Legacy sockets never enter authenticated rooms, including across deploys.
+      const id = env.ROOM.idFromName(`v2:${roomKey}`);
       const stub = env.ROOM.get(id);
       return stub.fetch(request);
     }

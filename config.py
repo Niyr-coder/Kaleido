@@ -8,6 +8,7 @@ All arbitrary values are centralized here for easy tracking and modification
 import io
 import shutil
 import sys
+import threading
 import logging
 from typing import TYPE_CHECKING, Optional, Tuple
 from pathlib import Path
@@ -22,11 +23,14 @@ log = logging.getLogger(__name__)
 # APPLICATION METADATA
 # =============================================================================
 
-APP_VERSION = "1.5.2"                           # Application version
+APP_VERSION = "1.6.0"                           # Application version
 APP_USER_AGENT = f"Rose/{APP_VERSION}"  # User-Agent header for HTTP requests
 GAME_EXECUTABLE_NAMES = ("League of Legends.exe", "League of Legends (TM) Client.exe")
 
-_CONFIG = configparser.ConfigParser()
+# Values are raw text: a '%' in a path must not be read as interpolation
+_CONFIG = configparser.ConfigParser(interpolation=None)
+# Reloads build a new parser and swap it in, so readers never see a half-read one
+_CONFIG_LOCK = threading.Lock()
 _CONFIG_MTIME: float = 0.0  # Last known modification time of config.ini
 
 
@@ -85,7 +89,7 @@ def write_config_file(config: configparser.ConfigParser, path: Path) -> None:
 
 def _reload_config() -> None:
     """Reload config from disk only when the file has actually been modified."""
-    global _CONFIG_MTIME
+    global _CONFIG, _CONFIG_MTIME
     config_path = get_config_file_path()
 
     # One-time migration of legacy config
@@ -103,16 +107,20 @@ def _reload_config() -> None:
     except OSError:
         current_mtime = 0.0
 
-    if current_mtime == _CONFIG_MTIME and _CONFIG.sections():
-        return  # File unchanged = use cached config
+    with _CONFIG_LOCK:
+        if current_mtime == _CONFIG_MTIME and _CONFIG.sections():
+            return  # File unchanged = use cached config
 
-    _CONFIG_MTIME = current_mtime
-    _CONFIG.clear()
-    if config_path.exists():
-        try:
-            read_config_file(_CONFIG, config_path)
-        except Exception as e:
-            log.warning(f"Failed to read config file: {e}")
+        fresh = configparser.ConfigParser(interpolation=None)
+        if config_path.exists():
+            try:
+                read_config_file(fresh, config_path)
+            except Exception as e:
+                # Keep the last good settings rather than fall back to every default
+                log.warning(f"Failed to read config file, keeping the previous settings: {e}")
+                _CONFIG_MTIME = current_mtime
+                return
+        _CONFIG, _CONFIG_MTIME = fresh, current_mtime
 
 
 _reload_config()
@@ -120,8 +128,9 @@ _reload_config()
 
 def get_config_option(section: str, option: str, fallback: Optional[str] = None) -> Optional[str]:
     _reload_config()
-    if _CONFIG.has_option(section, option):
-        return _CONFIG.get(section, option)
+    config = _CONFIG
+    if config.has_option(section, option):
+        return config.get(section, option)
     return fallback
 
 
@@ -144,7 +153,7 @@ def get_config_bool(section: str, option: str, fallback: bool) -> bool:
 
 def set_config_option(section: str, option: str, value: str) -> None:
     config_path = get_config_file_path()
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(interpolation=None)
     if config_path.exists():
         try:
             read_config_file(config, config_path)
@@ -198,6 +207,9 @@ WS_PING_INTERVAL_DEFAULT = 20  # Seconds between WebSocket pings
 WS_PING_TIMEOUT_DEFAULT = 10   # Seconds before WebSocket ping times out
 WS_RECONNECT_DELAY = 1.0       # Seconds to wait before WebSocket reconnect
 WS_RECONNECT_MAX_DELAY = 15.0  # Maximum delay after repeated connection failures
+# A starting client opens its WebSocket some seconds after its lockfile: retried at
+# WS_RECONNECT_DELAY this many times before the delay grows
+WS_RECONNECT_FAST_ATTEMPTS = 30
 WS_RECONNECT_JITTER = 0.25     # Randomized delay fraction to avoid synchronized retries
 
 # Lock detection timing
@@ -220,19 +232,25 @@ FALLBACK_LOADOUT_MS_DEFAULT = 0             # Fallback countdown duration (ms)
 
 # Skin injection timing
 SKIN_THRESHOLD_MS_DEFAULT = 300             # Time before loadout ends to write skin (ms)
-BASE_SKIN_VERIFICATION_WAIT_S = 0.15        # Seconds to wait for LCU to process base skin change
-PERSISTENT_MONITOR_START_SECONDS = 1        # Seconds remaining when persistent game monitor starts
-PERSISTENT_MONITOR_CHECK_INTERVAL_S = 0.05  # Seconds between game process checks
-PERSISTENT_MONITOR_IDLE_INTERVAL_S = 0.1    # Seconds to wait when game already suspended
-PERSISTENT_MONITOR_WAIT_TIMEOUT_S = 20.0    # Max seconds to wait for persistent monitor to suspend game
-PERSISTENT_MONITOR_WAIT_INTERVAL_S = 0.1    # Seconds between checks while waiting for suspension
-PERSISTENT_MONITOR_AUTO_RESUME_S = 20.0     # Auto-resume game after this many seconds if still suspended (safety)
-GAME_RESUME_VERIFICATION_WAIT_S = 0.1       # Seconds to wait after resume for status verification
-GAME_RESUME_MAX_ATTEMPTS = 3                # Max attempts to resume game (handles multiple suspensions)
+# The injection threshold: how long before the countdown ends the selected skin
+# is taken for the injection. A skin changed after it is ignored, so the one
+# picked before it (already staged in LTK Manager) is the one applied: with
+# less than a second, a late change could not be installed before the game.
+INJECTION_THRESHOLD_MIN_S = 1.0
+INJECTION_THRESHOLD_MAX_S = 2.0
+INJECTION_THRESHOLD_DEFAULT_S = 1.0
 
-# Game delay strategies
-ENABLE_MKOVERLAY_PRIORITY_BOOST = True   # Boost short-lived mkoverlay process priority during injection setup
-ENABLE_GAME_SUSPENSION = True            # Suspend game process during injection (RISKY - may trigger anti-cheat)
+
+def clamp_injection_threshold(value) -> float:
+    """The injection threshold *value* (seconds) within its allowed range."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return INJECTION_THRESHOLD_DEFAULT_S
+    if seconds != seconds:  # NaN
+        return INJECTION_THRESHOLD_DEFAULT_S
+    return max(INJECTION_THRESHOLD_MIN_S, min(INJECTION_THRESHOLD_MAX_S, seconds))
+BASE_SKIN_VERIFICATION_WAIT_S = 0.15        # Seconds to wait for LCU to process base skin change
 
 
 # =============================================================================
@@ -275,7 +293,6 @@ LOG_SEPARATOR_WIDTH = 80                 # Width of separator lines in logs (e.g
 # Process termination timeouts (seconds)
 PROCESS_TERMINATE_TIMEOUT_S = 5         # Timeout for process.wait() after terminate/kill
 PROCESS_TERMINATE_WAIT_S = 0.3          # Short timeout for process wait after terminate() before kill()
-PROCESS_ENUM_TIMEOUT_S = 2.0            # Timeout for process enumeration when finding runoverlay
 THREAD_JOIN_TIMEOUT_S = 2               # Timeout for thread.join() on shutdown (increased from 1.0s)
 THREAD_FORCE_EXIT_TIMEOUT_S = 4         # Total timeout before forcing app exit
 INJECTION_LOCK_TIMEOUT_S = 2.0          # Timeout for acquiring injection lock
@@ -283,6 +300,7 @@ INJECTION_LOCK_TIMEOUT_S = 2.0          # Timeout for acquiring injection lock
 # Main loop watchdog timeouts (seconds)
 MAIN_LOOP_STALL_THRESHOLD_S = 5.0       # Threshold for detecting main loop stalls
 MAIN_LOOP_FORCE_QUIT_TIMEOUT_S = 2.0    # Timeout before forcing quit when stop flag is set
+UNINSTALL_CLEANUP_DEADLINE_S = 120
 CHROMA_PANEL_PROCESSING_THRESHOLD_S = 1.0  # Warning threshold for chroma panel processing
 
 # Process priority settings
@@ -358,6 +376,7 @@ _IS_DEV_BUILD = bool(getattr(sys, "frozen", False)) and (
     "rosedev" in Path(sys.executable).stem.lower() or "rose-dev" in Path(sys.executable).stem.lower()
 )
 SINGLE_INSTANCE_MUTEX_NAME = r"Local\RoseDevSingleInstance" if _IS_DEV_BUILD else r"Local\RoseSingleInstance"
+MOD_MIGRATION_MUTEX_NAME = r"Local\RoseModMigration"
 
 # Log file patterns (handles .log files)
 LOG_FILE_PATTERN = "rose_*.log*"

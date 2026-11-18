@@ -43,6 +43,7 @@ class PhaseThread(threading.Thread):
         self.skin_scraper = skin_scraper
         self.db = db
         self.last_phase = None
+        self._last_raw_phase = None
         self._null_phase_streak = 0
 
         # Initialize handlers
@@ -63,20 +64,43 @@ class PhaseThread(threading.Thread):
                 log.debug(f"LCU refresh failed in phase thread: {e}")
             
             ph = self.lcu.phase if self.lcu.ok else None
+
+            # A client restart Rose's loader deferred (the client wasn't ready,
+            # or a champ select was on) happens once the client is readable in
+            # a safe phase: home ("None"), lobby or end of game
+            if ph != self._last_raw_phase:
+                self._last_raw_phase = ph
+                if ph in ("None", "Lobby", "EndOfGame"):
+                    from utils.integration import pengu_loader
+                    pengu_loader.retry_deferred_restart()
+                if ph == "None":
+                    # The home screen never reaches the phase handler (an
+                    # unknown phase is skipped below): start the base-skin fix
+                    # of the stored skins from here. The shared phase is the
+                    # home screen's already, or the pass stops on the last one
+                    self.state.phase = None
+                    try:
+                        from injection.baseskin.library import on_phase as fix_stored_skins_when_idle
+                        fix_stored_skins_when_idle(ph, self.injection_manager, self.state)
+                    except Exception as e:  # noqa: BLE001 - phase handling goes on
+                        log.warning(f"[phase] Could not start checking the stored skins against the base skin: {e}")
+
             if ph == "None":
                 ph = None
             
             # If phase is unknown (None), skip handling.
-            # Use a grace period to avoid wiping Swiftplay state on transient
-            # API hiccups (the LCU can briefly return None during transitions).
+            # Use a grace period to avoid wiping the phase and Swiftplay state on
+            # transient API hiccups (the LCU can briefly return None during
+            # transitions): one missed poll in the countdown would end the
+            # loadout ticker and the match would get no skin
             if ph is None:
-                from threads.handlers.champ_select_reset import note_phase_for_reset
-                note_phase_for_reset(self.state, None)
-                self.state.phase = None
                 self._null_phase_streak += 1
 
                 # Only clean up after several consecutive None polls (~1.5-2.5 s)
                 if self._null_phase_streak >= 3:
+                    from threads.handlers.champ_select_reset import note_phase_for_reset
+                    note_phase_for_reset(self.state, None)
+                    self.state.phase = None
                     if self.state.is_swiftplay_mode:
                         # Swiftplay flag is still set but LCU returned None for
                         # several polls — the session is gone.  Full cleanup.
@@ -91,6 +115,12 @@ class PhaseThread(threading.Thread):
 
             self._null_phase_streak = 0
             phase_changed = (ph != self.last_phase)
+            if not phase_changed and self.state.phase is None:
+                # Back after an outage (the client restarting) in the phase it
+                # left: nothing changes, but the shared phase was cleared (#413).
+                # Only then: in champ select the countdown keeps "FINALIZATION"
+                # there while the client still reads ChampSelect
+                self.state.phase = ph
 
             if ph == "Lobby":
                 self.lobby_processor.process_lobby_state(force=phase_changed)
@@ -115,12 +145,6 @@ class PhaseThread(threading.Thread):
 
                 # Handle phase change
                 self.phase_handler.handle_phase_change(ph, self.last_phase)
-
-                # A client restart Rose's loader deferred (enabled during a
-                # champ select) happens once the client is back in a safe phase
-                if ph in ("Lobby", "EndOfGame"):
-                    from utils.integration import pengu_loader
-                    pengu_loader.retry_deferred_restart()
 
                 # Reset lobby tracking when leaving lobby
                 if self.last_phase == "Lobby" and ph != "Lobby":

@@ -1,0 +1,111 @@
+import unittest
+from unittest.mock import patch
+
+from injection.overlay.ltf_report import LAUNCHER_ELEVATED_DETAIL, LTF_LOGS_HINT, ltk_failure_hint
+from pengu.communication import message_handler
+
+
+def summarize(*reports):
+    """Troubleshooting's summaries of (message, fix) reports, as the file holds them."""
+    lines = []
+    for message, fix in reports:
+        lines.append(f"Nov 02 00:52 | {message}")
+        lines.append(f"Fix: {fix}")
+    handler = object.__new__(message_handler.MessageHandler)
+    with patch.object(message_handler, "read_issues_tail", return_value=lines):
+        return message_handler.MessageHandler._compute_diagnostics_errors(handler)
+
+
+class LtfDiagnosticsTests(unittest.TestCase):
+    def test_an_import_failure_without_ltf_in_its_text_is_still_one(self):
+        # The mod name and the error text name neither LTF nor LTK Manager
+        (summary,) = summarize((
+            "Injection failed: could not install Beezcrank (Rose Quartz) (LTKBridge request failed: timed out).",
+            f"Free some disk space, then retry. {LTF_LOGS_HINT}",
+        ))
+
+        self.assertEqual(summary["code"], "LTF_IMPORT_FAILED")
+        self.assertEqual(summary["cause"], "import")
+
+    def test_a_session_failure_is_recognized_by_its_hint(self):
+        (summary,) = summarize((
+            "Injection failed: the game started before the patcher was scanning (joined too late)",
+            f"The game started before the patcher was ready. Retry the next game. {LTF_LOGS_HINT}",
+        ))
+
+        self.assertEqual(summary["code"], "LTF_FAILED")
+        self.assertEqual(summary["cause"], "late")
+
+    def test_a_session_failure_saved_with_the_older_hint_is_still_one(self):
+        # Before ltk_bridge.log, which nothing wrote, left the hint
+        (summary,) = summarize((
+            "Injection failed: the game started before the patcher was scanning (joined too late)",
+            "The game started before the patcher was ready. Retry the next game. Details are in "
+            "C:\\Users\\Public\\ltk_bridge.log, ltk_api.log and ltk_launcher.log.",
+        ))
+
+        self.assertEqual(summary["code"], "LTF_FAILED")
+        self.assertEqual(summary["cause"], "late")
+
+    def test_an_open_ltk_manager_gets_its_own_cause(self):
+        (summary,) = summarize((
+            "Injection failed: LTK Manager is already open without Rose's bridge",
+            f"Close LTK Manager, then retry. {LTF_LOGS_HINT}",
+        ))
+
+        self.assertEqual(summary["code"], "LTF_FAILED")
+        self.assertEqual(summary["cause"], "running")
+
+    def test_ltk_managers_browser_not_answering_gets_its_own_cause(self):
+        # The bridge reached LTK Manager, but not the browser it drives it through (#425)
+        (summary,) = summarize((
+            "Injection failed: Rose's bridge could not reach LTK Manager's built-in browser "
+            "(CDP unavailable or timed out)",
+            f"Restart your PC, then retry. {LTF_LOGS_HINT}",
+        ))
+
+        self.assertEqual(summary["code"], "LTF_FAILED")
+        self.assertEqual(summary["cause"], "cdp")
+
+    def test_a_slow_ltk_mod_check_gets_its_own_entry(self):
+        # #481: it names LTK Manager, but it is no failed session
+        from injection.overlay.overlay_manager import SLOW_MOD_CHECK_HINT, SLOW_MOD_CHECK_MESSAGE
+        (summary,) = summarize((
+            f"{SLOW_MOD_CHECK_MESSAGE} 263s on this PC, slowing down the game's loading.",
+            SLOW_MOD_CHECK_HINT,
+        ))
+
+        self.assertEqual(summary["code"], "LTK_SLOW_MOD_CHECK")
+        self.assertEqual(summary["detail"], "263")
+
+    def test_an_older_install_report_of_it_is_not_an_import_problem(self):
+        (summary,) = summarize((
+            'Injection failed: could not install T1 Ambessa (list failed: {"ok": false, "raw": '
+            '{"ok": false, "error": "CDP unavailable or timed out"}}).',
+            f"Free some disk space, then retry. {LTF_LOGS_HINT}",
+        ))
+
+        self.assertEqual(summary["code"], "LTF_FAILED")
+        self.assertEqual(summary["cause"], "cdp")
+
+    def test_a_refusal_over_the_launchers_setting_is_an_ltf_failure(self):
+        """It names "run as administrator", like the Windows account's and
+        LTK Manager's own reports, but is this session's patcher failure"""
+        reason = ("LTK Manager's patcher refused the overlay (host verification failed: VRF00000007 (12024); "
+                  f"LTK Manager's parent was not explorer.exe (not explorer.exe); {LAUNCHER_ELEVATED_DETAIL})")
+        (summary,) = summarize((f"Injection failed: {reason}", ltk_failure_hint(reason)))
+
+        self.assertEqual(summary["code"], "LTF_FAILED")
+        self.assertEqual(summary["cause"], "launcher_admin")
+
+    def test_a_launcher_that_could_not_get_into_ltk_manager_is_no_missing_file(self):
+        reason = ("could not start the LTF launcher (exit code 4: it could not inject its bridge into LTK Manager; "
+                  "OpenProcess(pid=12368) err=5)")
+        (summary,) = summarize((f"Injection failed: {reason}", ltk_failure_hint(reason)))
+
+        self.assertEqual(summary["code"], "LTF_FAILED")
+        self.assertEqual(summary["cause"], "inject")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -64,8 +64,6 @@ jobs:
           $plugin = Get-ChildItem -Path "dist/Rose" -Recurse -Filter "index.js" | Where-Object { $_.FullName -like "*ROSE-KaleidoHotkeys*" } | Select-Object -First 1
           if (-not $plugin) { throw "Kaleido plugin missing from bundle" }
           "Plugin: $($plugin.FullName)"
-          $tools = Get-ChildItem -Path "dist/Rose" -Recurse -Filter "mod-tools.exe" | Select-Object -First 1
-          if (-not $tools) { throw "mod-tools.exe missing from bundle" }
           Get-ChildItem installer/*.exe | ForEach-Object { "Installer: $($_.Name) $([math]::Round($_.Length/1MB,1)) MB" }
 
       - name: Zip the portable build
@@ -74,6 +72,10 @@ jobs:
           $version = (Select-String -Path config.py -Pattern 'APP_VERSION = "([^"]+)"').Matches[0].Groups[1].Value
           Compress-Archive -Path "dist/Rose/*" -DestinationPath "installer/Kaleido_$version.zip" -Force
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build the auto-update package
+        shell: pwsh
+        run: python scripts/create_update_package.py
 
       - uses: actions/upload-artifact@v4
         with:

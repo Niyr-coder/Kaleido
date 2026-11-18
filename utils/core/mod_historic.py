@@ -87,22 +87,18 @@ def _mod_historic_file_path() -> Path:
     return data_dir / "mod_historic.json"
 
 
-def load_mod_historic() -> Dict[str, Union[str, List[str]]]:
-    """Load the mod historic mapping. Returns empty dict if missing or invalid.
-
-    Normalized shape returned:
-      - "map"/"font"/"announcer": string
-      - category keys ("ui"/"voiceover"/"loading_screen"/"vfx"/"sfx"/"others"): list[str]
-
-    Also supports legacy "other" (string or list) and will merge it into category keys.
-    If the file is legacy-only, this function will best-effort migrate it to the new shape.
-    """
+def _load_mod_historic(strict: bool = False) -> Dict[str, Union[str, List[str]]]:
+    # strict: raise when the file exists but cannot be read (OSError), so a
+    # writer never replaces a healthy file with a map built from nothing
     try:
         p = _mod_historic_file_path()
         if not p.exists():
             return {}
         with p.open("r", encoding="utf-8") as f:
-            data = json.load(f)
+            raw = f.read()
+        if not raw.strip():
+            return {}
+        data = json.loads(raw)
         if isinstance(data, dict):
             result: Dict[str, Union[str, List[str]]] = {}
 
@@ -163,8 +159,24 @@ def load_mod_historic() -> Dict[str, Union[str, List[str]]]:
                     out[cat] = items
             return out
         return {}
-    except Exception:
+    except Exception as e:
+        if strict and isinstance(e, OSError):
+            raise
+        log.warning(f"[HISTORIC] Could not read the saved mods: {e}")
         return {}
+
+
+def load_mod_historic() -> Dict[str, Union[str, List[str]]]:
+    """Load the mod historic mapping. Returns empty dict if missing or invalid.
+
+    Normalized shape returned:
+      - "map"/"font"/"announcer": string
+      - category keys ("ui"/"voiceover"/"loading_screen"/"vfx"/"sfx"/"others"): list[str]
+
+    Also supports legacy "other" (string or list) and will merge it into category keys.
+    If the file is legacy-only, this function will best-effort migrate it to the new shape.
+    """
+    return _load_mod_historic()
 
 
 def get_historic_mod(mod_type: str) -> Union[Optional[str], Optional[List[str]]]:
@@ -205,7 +217,11 @@ def write_historic_mod(mod_type: str, relative_path: Union[str, List[str]]) -> N
 
 def _write_historic_mod_locked(mod_type: str, relative_path: Union[str, List[str]]) -> None:
     p = _mod_historic_file_path()
-    m = load_mod_historic()
+    try:
+        m = _load_mod_historic(strict=True)
+    except Exception as e:
+        log.warning(f"[HISTORIC] Could not save {mod_type} mod history, the saved file is unreadable: {e}")
+        return
 
     # Normalize legacy "other" writes into per-category keys
     if mod_type == "other":
@@ -217,12 +233,12 @@ def _write_historic_mod_locked(mod_type: str, relative_path: Union[str, List[str
         for cat, paths in grouped.items():
             if paths:
                 m[cat] = _dedupe_keep_order(paths)
+            else:
+                m.pop(cat, None)
         # Avoid writing legacy key
         if "other" in m:
             del m["other"]
-        mod_type = "others"
-
-    if mod_type in _CATEGORY_KEYS:
+    elif mod_type in _CATEGORY_KEYS:
         items = _as_list(relative_path)
         if items:
             m[mod_type] = _dedupe_keep_order(items)
@@ -242,6 +258,30 @@ def _write_historic_mod_locked(mod_type: str, relative_path: Union[str, List[str
         log.warning(f"[HISTORIC] Could not save {mod_type} mod history: {e}")
 
 
+def rename_mod_paths(renamed: Dict[str, str]) -> int:
+    """Point the saved mods at their new paths ({old relative path: new},
+    compared as Windows compares paths). Returns how many changed. Raises
+    when the file cannot be written: it then holds what it held."""
+    wanted = {old.replace("\\", "/").casefold(): new for old, new in renamed.items()}
+    if not wanted:
+        return 0
+
+    def rename(path: str) -> str:
+        return wanted.get(str(path).replace("\\", "/").casefold(), path)
+
+    with _write_lock:
+        m = _load_mod_historic(strict=True)
+        changed = 0
+        for key, value in list(m.items()):
+            new_value = [rename(item) for item in value] if isinstance(value, list) else rename(value)
+            if new_value != value:
+                m[key] = new_value
+                changed += 1
+        if changed:
+            _write_json(_mod_historic_file_path(), m)
+    return changed
+
+
 def clear_historic_mod(mod_type: str) -> None:
     """Clear the historic entry for a specific mod type.
     
@@ -254,7 +294,11 @@ def clear_historic_mod(mod_type: str) -> None:
 
 def _clear_historic_mod_locked(mod_type: str) -> None:
     p = _mod_historic_file_path()
-    m = load_mod_historic()
+    try:
+        m = _load_mod_historic(strict=True)
+    except Exception as e:
+        log.warning(f"[HISTORIC] Could not clear {mod_type} mod history, the saved file is unreadable: {e}")
+        return
     if mod_type == "other":
         # Backward compat: clear all category keys
         changed = False

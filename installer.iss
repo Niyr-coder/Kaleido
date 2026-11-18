@@ -2,8 +2,8 @@
 ; This creates a proper Windows installer that registers the app
 
 #define MyAppName "Kaleido"
-#define MyAppVersion "1.5.2"
-#define MyAppVersionInfo "1.5.2.0"
+#define MyAppVersion "1.6.0"
+#define MyAppVersionInfo "1.6.0.0"
 #define MyAppPublisher "Krealos"
 #define MyAppURL "https://github.com/Niyr-coder/Kaleido"
 #define MyAppExeName "Rose.exe"
@@ -36,6 +36,8 @@ ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; Replace the old log so upgrades drop its recursive deletes and task removal.
+UninstallLogMode=overwrite
 VersionInfoVersion={#MyAppVersionInfo}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppDescription}
@@ -67,20 +69,122 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 
 [UninstallRun]
 ; Uninstall Pengu Loader (removes its IFEO activation and disables the native hook)
-Filename: "{localappdata}\Rose\Pengu Loader\Pengu Loader.exe"; Parameters: "--uninstall --silent"; Flags: runhidden waituntilterminated skipifdoesntexist
-; Always remove the Rose auto-start scheduled task (created via schtasks /TN "Rose")
-Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN Rose /F"; Flags: runhidden
+Filename: "{app}\_internal\Pengu Loader\Pengu Loader.exe"; Parameters: "--uninstall --silent"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "RosePenguDeactivate"
 
 [UninstallDelete]
+; _internal is Rose's runtime alone. An update swaps in a whole new tree, whose
+; files the uninstall log never recorded, so remove it with everything in it.
 Type: filesandordirs; Name: "{app}\_internal"
-Type: filesandordirs; Name: "{app}\injection\overlay"
-Type: filesandordirs; Name: "{app}\injection\mods"
-; Remove user data stored in AppData
-; Rose stores user data in %LOCALAPPDATA%\Rose
-Type: filesandordirs; Name: "{localappdata}\Rose"
-; Note: State files are now stored in user data directory, not in app directory
+; Inno tracks installed files. A shared install root can leave untracked files
+; in these folders, so remove the directories only when empty.
+Type: dirifempty; Name: "{app}\injection\overlay"
+Type: dirifempty; Name: "{app}\injection\mods"
+; %LOCALAPPDATA%\Rose is not listed here: whether it survives is a checkbox on
+; the uninstaller page, see _KeepUserData() in [Code] ([UninstallDelete] checks
+; run at install time, not when the user answers)
 
 [Code]
+var
+  { The uninstaller's keep-data checkbox. Left nil in silent mode. }
+  KeepUserDataBox: TNewCheckBox;
+
+function _UserDataFolder(): String;
+begin
+  { Rose stores user data in %LOCALAPPDATA%\Rose }
+  Result := ExpandConstant('{localappdata}\Rose');
+end;
+
+function _KeepUserData(): Boolean;
+begin
+  { No page means a silent uninstall, which removes Rose completely as it
+    always did: only a user who ticks the box keeps their data. }
+  Result := (KeepUserDataBox <> nil) and KeepUserDataBox.Checked;
+end;
+
+{ Inno Setup cannot add wizard pages to the uninstaller, so the only way to
+  offer a checkbox is to borrow the progress form's notebook for one step. }
+procedure InitializeUninstallProgressForm();
+var
+  Page: TNewNotebookPage;
+  IntroText: TNewStaticText;
+  UninstallButton: TNewButton;
+  SavedPageName, SavedPageDescription: String;
+  SavedCancelEnabled: Boolean;
+  SavedCancelModalResult: Integer;
+  SavedCancelLeft: Integer;
+  Top0, Left0, Width0: Integer;
+begin
+  if UninstallSilent then
+    Exit;
+
+  Top0 := UninstallProgressForm.StatusLabel.Top;
+  Left0 := UninstallProgressForm.StatusLabel.Left;
+  Width0 := UninstallProgressForm.StatusLabel.Width;
+
+  SavedPageName := UninstallProgressForm.PageNameLabel.Caption;
+  SavedPageDescription := UninstallProgressForm.PageDescriptionLabel.Caption;
+  SavedCancelEnabled := UninstallProgressForm.CancelButton.Enabled;
+  SavedCancelModalResult := UninstallProgressForm.CancelButton.ModalResult;
+
+  Page := TNewNotebookPage.Create(UninstallProgressForm);
+  Page.Notebook := UninstallProgressForm.InnerNotebook;
+  Page.Parent := UninstallProgressForm.InnerNotebook;
+  Page.Align := alClient;
+  UninstallProgressForm.InnerNotebook.ActivePage := Page;
+
+  IntroText := TNewStaticText.Create(UninstallProgressForm);
+  IntroText.Parent := Page;
+  IntroText.Left := Left0;
+  IntroText.Top := Top0;
+  IntroText.Width := Width0;
+  IntroText.Height := ScaleY(36);
+  IntroText.AutoSize := False;
+  IntroText.ShowAccelChar := False;
+  IntroText.Caption := 'Your settings, skin history and downloaded skins are kept unless you untick this.';
+
+  KeepUserDataBox := TNewCheckBox.Create(UninstallProgressForm);
+  KeepUserDataBox.Parent := Page;
+  KeepUserDataBox.Left := Left0;
+  KeepUserDataBox.Top := Top0 + ScaleY(48);
+  KeepUserDataBox.Width := Width0;
+  KeepUserDataBox.Caption := 'Keep my data in ' + _UserDataFolder();
+  KeepUserDataBox.Checked := True;
+
+  { The uninstaller form only has a Cancel button, on the right. Take its spot
+    for the button that continues and shift Cancel to the left of it. }
+  UninstallButton := TNewButton.Create(UninstallProgressForm);
+  UninstallButton.Parent := UninstallProgressForm;
+  UninstallButton.Width := UninstallProgressForm.CancelButton.Width;
+  UninstallButton.Height := UninstallProgressForm.CancelButton.Height;
+  UninstallButton.Left := UninstallProgressForm.CancelButton.Left;
+  UninstallButton.Top := UninstallProgressForm.CancelButton.Top;
+  UninstallButton.Caption := 'Uninstall';
+  UninstallButton.ModalResult := mrOK;
+  UninstallButton.TabOrder := UninstallProgressForm.CancelButton.TabOrder;
+
+  SavedCancelLeft := UninstallProgressForm.CancelButton.Left;
+  UninstallProgressForm.CancelButton.Left :=
+    SavedCancelLeft - UninstallButton.Width - ScaleX(10);
+  UninstallProgressForm.CancelButton.TabOrder := UninstallButton.TabOrder + 1;
+
+  UninstallProgressForm.PageNameLabel.Caption := 'Uninstall {#MyAppName}';
+  UninstallProgressForm.PageDescriptionLabel.Caption :=
+    'Tick the data you want to keep, then continue.';
+  UninstallProgressForm.CancelButton.Enabled := True;
+  UninstallProgressForm.CancelButton.ModalResult := mrCancel;
+
+  if UninstallProgressForm.ShowModal = mrCancel then
+    Abort;
+
+  { Put the standard page back for the rest of the run. }
+  UninstallButton.Visible := False;
+  UninstallProgressForm.PageNameLabel.Caption := SavedPageName;
+  UninstallProgressForm.PageDescriptionLabel.Caption := SavedPageDescription;
+  UninstallProgressForm.CancelButton.Enabled := SavedCancelEnabled;
+  UninstallProgressForm.CancelButton.ModalResult := SavedCancelModalResult;
+  UninstallProgressForm.CancelButton.Left := SavedCancelLeft;
+end;
+
 function _IsLeagueRunning(): Boolean;
 var
   WbemLocator, WMIService, Processes: Variant;
@@ -150,34 +254,77 @@ begin
   Result := True;
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+const
+  ProfileListKey = 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList';
+  SystemDrivePrefix = '%SystemDrive%';
+
+{ The loader registers rundll32 "<absolute path to core.dll>", #6000.
+  Use its DLL argument as the ownership check for Run entries and IFEO. }
+function _PenguCoreFromCommand(const Command: string): string;
+var
+  Rest: string;
+  Launcher: string;
+  EntryPoint: string;
+  QuotePos: Integer;
 begin
-  if CurStep = ssPostInstall then
+  Result := '';
+  QuotePos := Pos('"', Command);
+  if QuotePos = 0 then
+    exit;
+  Launcher := Trim(Copy(Command, 1, QuotePos - 1));
+  if (CompareText(Launcher, 'rundll32') <> 0) and
+     (CompareText(Launcher, 'rundll32.exe') <> 0) then
+    exit;
+  Rest := Copy(Command, QuotePos + 1, Length(Command));
+  QuotePos := Pos('"', Rest);
+  if QuotePos = 0 then
+    exit;
+  EntryPoint := Trim(Copy(Rest, QuotePos + 1, Length(Rest)));
+  if Copy(EntryPoint, 1, 1) <> ',' then
+    exit;
+  if Trim(Copy(EntryPoint, 2, Length(EntryPoint))) = '#6000' then
+    Result := Copy(Rest, 1, QuotePos - 1);
+end;
+
+function _IsRosePenguCore(const DllPath: string): Boolean;
+var
+  Profiles: TArrayOfString;
+  ProfileDir: string;
+  I: Integer;
+begin
+  Result :=
+    (CompareText(DllPath, ExpandConstant('{app}\_internal\Pengu Loader\core.dll')) = 0) or
+    (CompareText(DllPath, ExpandConstant('{autopf}\{#MyAppName}\_internal\Pengu Loader\core.dll')) = 0) or
+    (CompareText(DllPath, _UserDataFolder() + '\Pengu Loader\core.dll') = 0);
+  if Result then
+    exit;
+
+  { When the uninstaller runs under another account, Rose can have used the
+    desktop user's registered profile with the default AppData layout. }
+  if not RegGetSubkeyNames(HKLM64, ProfileListKey, Profiles) then
+    exit;
+  for I := 0 to GetArrayLength(Profiles) - 1 do
   begin
-    // Create registry entries for Windows Apps list
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'DisplayName', '{#MyAppName}');
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'DisplayVersion', '{#MyAppVersion}');
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'Publisher', '{#MyAppPublisher}');
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'URLInfoAbout', '{#MyAppURL}');
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'InstallLocation', ExpandConstant('{app}'));
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'UninstallString', ExpandConstant('{uninstallexe}'));
-    RegWriteDWordValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'NoModify', 1);
-    RegWriteDWordValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'NoRepair', 1);
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}', 'DisplayIcon', ExpandConstant('{app}\{#MyAppExeName}'));
+    if RegQueryStringValue(HKLM64, ProfileListKey + '\' + Profiles[I], 'ProfileImagePath', ProfileDir) then
+    begin
+      if CompareText(Copy(ProfileDir, 1, Length(SystemDrivePrefix)), SystemDrivePrefix) = 0 then
+        ProfileDir := GetEnv('SystemDrive') + Copy(ProfileDir, Length(SystemDrivePrefix) + 1, Length(ProfileDir));
+      if (ProfileDir <> '') and
+         (CompareText(DllPath, AddBackslash(ProfileDir) + 'AppData\Local\{#MyAppName}\Pengu Loader\core.dll') = 0) then
+      begin
+        Result := True;
+        exit;
+      end;
+    end;
   end;
 end;
 
-function _ContainsTextLower(const Haystack: string; const NeedleLower: string): Boolean;
-begin
-  Result := Pos(NeedleLower, LowerCase(Haystack)) > 0;
-end;
-
-procedure _DeleteStartupValuesIfMatch(const RootKey: Integer; const SubKey: string);
+procedure _RemoveRosePenguStartupValues(const RootKey: Integer; const SubKey: string);
 var
   Names: TArrayOfString;
   I: Integer;
   Val: string;
-  ValLower: string;
+  DllPath: string;
 begin
   if not RegGetValueNames(RootKey, SubKey, Names) then
     exit;
@@ -186,15 +333,9 @@ begin
   begin
     if RegQueryStringValue(RootKey, SubKey, Names[I], Val) then
     begin
-      ValLower := LowerCase(Val);
-
-      { Remove legacy/broken startup entries that invoke rundll32 on Pengu Loader core.dll.
-        This is what produces the RunDLL "module not found" dialog after uninstall. }
-      if (_ContainsTextLower(ValLower, 'rundll32') and _ContainsTextLower(ValLower, 'pengu loader\core.dll')) or
-         _ContainsTextLower(ValLower, '\rose\_internal\pengu loader\core.dll') then
-      begin
+      DllPath := _PenguCoreFromCommand(Val);
+      if (DllPath <> '') and _IsRosePenguCore(DllPath) then
         RegDeleteValue(RootKey, SubKey, Names[I]);
-      end;
     end;
   end;
 end;
@@ -208,36 +349,243 @@ const
 procedure _CleanupStartupRegistry();
 begin
   { 64-bit and user/machine startup keys }
-  _DeleteStartupValuesIfMatch(HKCU, RunKey);
-  _DeleteStartupValuesIfMatch(HKLM, RunKey);
-  _DeleteStartupValuesIfMatch(HKCU, RunOnceKey);
-  _DeleteStartupValuesIfMatch(HKLM, RunOnceKey);
+  _RemoveRosePenguStartupValues(HKCU, RunKey);
+  _RemoveRosePenguStartupValues(HKLM, RunKey);
+  _RemoveRosePenguStartupValues(HKCU, RunOnceKey);
+  _RemoveRosePenguStartupValues(HKLM, RunOnceKey);
 
   { 32-bit view keys (defensive) }
-  _DeleteStartupValuesIfMatch(HKCU, RunKey6432);
-  _DeleteStartupValuesIfMatch(HKLM, RunKey6432);
-  _DeleteStartupValuesIfMatch(HKCU, RunOnce6432);
-  _DeleteStartupValuesIfMatch(HKLM, RunOnce6432);
+  _RemoveRosePenguStartupValues(HKCU, RunKey6432);
+  _RemoveRosePenguStartupValues(HKLM, RunKey6432);
+  _RemoveRosePenguStartupValues(HKCU, RunOnce6432);
+  _RemoveRosePenguStartupValues(HKLM, RunOnce6432);
+end;
+
+const
+  IfeoKey = 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\LeagueClientUx.exe';
+
+procedure _RemoveRosePenguIfeo(const OnlyIfMissing: Boolean);
+var
+  Debugger: string;
+  DllPath: string;
+begin
+  if not RegQueryStringValue(HKLM64, IfeoKey, 'Debugger', Debugger) then
+    exit;
+  { A hook whose DLL is gone only breaks the client's start: remove it
+    whoever set it }
+  DllPath := _PenguCoreFromCommand(Debugger);
+  if (DllPath <> '') and
+     ((not FileExists(DllPath)) or ((not OnlyIfMissing) and _IsRosePenguCore(DllPath))) then
+    RegDeleteValue(HKLM64, IfeoKey, 'Debugger');
+end;
+
+procedure _RemoveRoseAutostartTask();
+var
+  Scheduler: Variant;
+  Folder: Variant;
+  Task: Variant;
+  Actions: Variant;
+  Action: Variant;
+  Arguments: Variant;
+  ActionPath: string;
+  ActionArguments: string;
+begin
+  try
+    Scheduler := CreateOleObject('Schedule.Service');
+    Scheduler.Connect();
+    Folder := Scheduler.GetFolder('\');
+    Task := Folder.GetTask('{#MyAppName}');
+    Actions := Task.Definition.Actions;
+    if Actions.Count <> 1 then
+      exit;
+    Action := Actions.Item(1);
+    { Path and Arguments belong to the executable action Rose registers.
+      Reading them from any other action fails and leaves the task intact. }
+    ActionPath := Action.Path;
+    Arguments := Action.Arguments;
+    if not (VarIsNull(Arguments) or VarIsEmpty(Arguments)) then
+      ActionArguments := Arguments;
+    if (CompareText(RemoveQuotes(Trim(ActionPath)), ExpandConstant('{app}\{#MyAppExeName}')) = 0) and
+       (Trim(ActionArguments) = '') then
+      Folder.DeleteTask('{#MyAppName}', 0);
+  except
+    Log('Could not read or remove the Rose startup task: ' + GetExceptionMessage);
+  end;
+end;
+
+const
+  LegacyUninstallKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}';
+
+procedure _CleanupLegacyUninstallEntry();
+var
+  InstallLocation: string;
+  DisplayName: string;
+  Publisher: string;
+begin
+  { Inno owns the AppId-based Apps entry. Remove only our duplicate from older
+    installers, and only when it belongs to this installation. }
+  if RegQueryStringValue(HKLM, LegacyUninstallKey, 'InstallLocation', InstallLocation) and
+     RegQueryStringValue(HKLM, LegacyUninstallKey, 'DisplayName', DisplayName) and
+     RegQueryStringValue(HKLM, LegacyUninstallKey, 'Publisher', Publisher) and
+     (CompareText(AddBackslash(InstallLocation), AddBackslash(ExpandConstant('{app}'))) = 0) and
+     (DisplayName = '{#MyAppName}') and (Publisher = '{#MyAppPublisher}') then
+  begin
+    RegDeleteKeyIncludingSubkeys(HKLM, LegacyUninstallKey);
+  end;
 end;
 
 procedure _DeleteLocalAppDataRose();
 begin
   { Ensure user data is removed before running external cleanup }
-  DelTree(ExpandConstant('{localappdata}\Rose'), True, True, True);
+  DelTree(_UserDataFolder(), True, True, True);
+end;
+
+const
+  DirectoryAttribute = $10;
+  ReparsePointAttribute = $400;
+  UpdateMarkerName = '.rose-update-workspace';
+  UpdateMarkerVersion = 'rose-update-v1';
+
+function _GetFileAttributes(const FileName: string): Cardinal;
+  external 'GetFileAttributesW@kernel32.dll stdcall';
+
+function _IsPlainDirectoryPath(Directory: string): Boolean;
+var
+  Attributes: Cardinal;
+  Parent: string;
+begin
+  Result := False;
+  while Directory <> '' do
+  begin
+    Attributes := _GetFileAttributes(Directory);
+    if (Attributes and (DirectoryAttribute or ReparsePointAttribute)) <> DirectoryAttribute then
+      exit;
+    Parent := ExtractFileDir(Directory);
+    if Parent = Directory then
+      break;
+    Directory := Parent;
+  end;
+  Result := True;
+end;
+
+procedure _RemoveRoseUpdateWorkspace();
+var
+  Workspace, Marker, Name, EntryPath: string;
+  Contents: AnsiString;
+  MarkerSize: Integer;
+  Entry: TFindRec;
+  Files, Folders: TStringList;
+  I: Integer;
+begin
+  Workspace := ExpandConstant('{app}') + '.update';
+  { Custom locations may be writable by another process during uninstall. }
+  if CompareText(Workspace, ExpandConstant('{autopf}\{#MyAppName}.update')) <> 0 then
+    exit;
+  if not _IsPlainDirectoryPath(Workspace) then
+    exit;
+  Marker := AddBackslash(Workspace) + UpdateMarkerName;
+  if (_GetFileAttributes(Marker) and (DirectoryAttribute or ReparsePointAttribute)) <> 0 then
+    exit;
+  if not FileSize(Marker, MarkerSize) or (MarkerSize <> Length(UpdateMarkerVersion)) then
+    exit;
+  if not LoadStringFromFile(Marker, Contents) or (Contents <> UpdateMarkerVersion) then
+    exit;
+
+  Files := TStringList.Create;
+  Folders := TStringList.Create;
+  try
+    if not FindFirst(AddBackslash(Workspace) + '*', Entry) then
+      exit;
+    try
+      repeat
+        Name := LowerCase(Entry.Name);
+        if (Name <> '.') and (Name <> '..') then
+        begin
+          if (Entry.Attributes and ReparsePointAttribute) <> 0 then
+            exit;
+          EntryPath := AddBackslash(Workspace) + Entry.Name;
+          if (Entry.Attributes and DirectoryAttribute) <> 0 then
+          begin
+            if (Name <> 'staging') and (Name <> 'previous') and (Name <> 'failed') then
+              exit;
+            Folders.Add(EntryPath);
+          end
+          else if Name <> UpdateMarkerName then
+          begin
+            if Pos('|' + Name + '|', '|apply.ps1|recover-rose.cmd|plan.json|update.log|ready|package.zip|package.zip.part|') = 0 then
+              exit;
+            Files.Add(EntryPath);
+          end;
+        end;
+      until not FindNext(Entry);
+    finally
+      FindClose(Entry);
+    end;
+
+    { A snapshot can include files from a shared install directory. Keep the
+      workspace and recovery tool whenever a snapshot still has content. }
+    for I := 0 to Folders.Count - 1 do
+      if not RemoveDir(Folders[I]) then
+      begin
+        Log('Kept the Rose update workspace with its recovery snapshot: ' + Workspace);
+        exit;
+      end;
+    for I := 0 to Files.Count - 1 do
+      if not DeleteFile(Files[I]) then
+        exit;
+    if DeleteFile(Marker) then
+      RemoveDir(Workspace);
+  finally
+    Folders.Free;
+    Files.Free;
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
   begin
     _CleanupStartupRegistry();
+    _RemoveRoseAutostartTask();
+    _CleanupLegacyUninstallEntry();
+    { Only Rose's data names the mods Rose added to LTK Manager's library:
+      remove them while Rose is still here to do it. Kept data keeps them.
+      Not in [UninstallRun], whose Check: is evaluated at install time. }
+    if not _KeepUserData then
+    begin
+      Exec(ExpandConstant('{app}\{#MyAppExeName}'), '--remove-ltk-mods', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      if (ResultCode <> 0) and not UninstallSilent then
+        MsgBox(
+          '{#MyAppName} could not finish cleaning up LTK Manager.'#13#10 +
+          'Some of your LTK Manager mods may still be turned off: turn them back on in LTK Manager.',
+          mbInformation,
+          MB_OK
+        );
+    end;
   end;
 
   if CurUninstallStep = usPostUninstall then
   begin
-    _DeleteLocalAppDataRose();
-    { Remove the entire install directory (Program Files\Rose) in case
-      runtime-generated files (logs, caches, etc.) were left behind. }
-    DelTree(ExpandConstant('{app}'), True, True, True);
+    if not _KeepUserData then
+      _DeleteLocalAppDataRose();
+    { Inno removes installed files; a shared/custom install root may also
+      contain unrelated files. Remove the root only when it is empty. }
+    RemoveDir(ExpandConstant('{app}'));
+    { The bundled loader cannot deactivate the copy in the user's data. }
+    _RemoveRosePenguIfeo(False);
+    _RemoveRoseUpdateWorkspace();
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    { Clean up a dead hook left by an older Rose uninstall }
+    _RemoveRosePenguIfeo(True);
+
+    _CleanupLegacyUninstallEntry();
   end;
 end;

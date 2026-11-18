@@ -6,14 +6,12 @@ Orchestrator for party mode skin sharing via WebSocket relay.
 
 Everyone keeps their own room open and also joins the rooms of the friends
 whose token they paste. Members advertise the rooms they're in, so everyone
-linked to a party ends up in all of its rooms: any member's token works,
-friends can be added one by one, and older Rose versions (one room each)
-still see everybody.
+linked to a party ends up in all of its rooms: any member's token works
+and friends can be added one by one.
 """
 
 import asyncio
 import re
-import secrets
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
@@ -22,14 +20,14 @@ from state import SharedState
 from utils.core.i18n import Text
 from utils.core.logging import get_logger
 
-from ..network.ws_relay import PartyRelay, compute_room_key, compute_group_room_key
+from ..network.ws_relay import PartyRelay, compute_room_key
 from ..protocol.token_codec import PartyToken, create_token
 from ..protocol.message_types import SkinSelection
-from ..discovery.custom_mods import get_mods_root, mod_hashes
+from ..discovery.custom_mods import saved_mod_hashes
 from ..discovery.lobby_matcher import LobbyMatcher
 from ..discovery.skin_collector import SkinCollector, PartySkinData
 from .party_state import PartyState
-from .party_storage import load_party_key
+from .party_storage import load_party_identity_key, load_party_key
 
 log = get_logger()
 
@@ -59,7 +57,11 @@ def _removed(member: dict, summoner_id: Optional[int]) -> bool:
     """Whether this member's state says they removed that summoner."""
     skin = member.get("skin")
     removed = skin.get("removed") if isinstance(skin, dict) else None
-    return isinstance(removed, list) and summoner_id is not None and summoner_id in removed
+    return (
+        isinstance(removed, list)
+        and summoner_id is not None
+        and (str(summoner_id) in removed or summoner_id in removed)
+    )
 
 
 def _state_time(member: dict) -> int:
@@ -82,11 +84,13 @@ class PartyManager:
 
         # Networking
         self._my_key: Optional[bytes] = None
+        self._identity_key: Optional[bytes] = None
         self._home_room: Optional[str] = None
-        # Kaleido: permanent friend-group room (joined next to our own room)
-        self._group_room: Optional[str] = None
         self._relays: Dict[str, PartyRelay] = {}
         self._unreachable_rooms: Dict[str, float] = {}
+        # Keep the first authenticated identity seen for each player across
+        # all rooms until Party Mode is disabled.
+        self._member_keys: Dict[int, str] = {}
 
         # Our skin pick and the full state last sent to our rooms
         self._skin_state: Optional[dict] = None
@@ -101,20 +105,13 @@ class PartyManager:
 
         # Background tasks
         self._running = False
+        self._enable_lock = asyncio.Lock()
         self._lobby_check_task: Optional[asyncio.Task] = None
         self._skin_broadcast_task: Optional[asyncio.Task] = None
 
         # Callbacks for UI updates
         self._on_state_change: Optional[Callable[[PartyState], None]] = None
         self._on_peer_update: Optional[Callable[[int, dict], None]] = None
-
-        # Kaleido social hooks (set by the message handler)
-        self._on_event: Optional[Callable[[dict], None]] = None            # relay event received
-        self._on_peer_skin: Optional[Callable[[int, str, SkinSelection], None]] = None
-        self._on_room_changed: Optional[Callable[[dict, dict], None]] = None
-        self._on_peer_online: Optional[Callable[[int, str], None]] = None
-        # Event ids already handled (the same event arrives once per shared room)
-        self._seen_events: List[str] = []
 
     @property
     def enabled(self) -> bool:
@@ -132,12 +129,15 @@ class PartyManager:
         self._on_state_change = on_state_change
         self._on_peer_update = on_peer_update
 
-    async def enable(self, group: Optional[dict] = None) -> str:
-        """Enable party mode: open our room and return our token.
+    async def enable(self) -> str:
+        """Enable party mode: open our room and return our token."""
+        # An enable sent again while the first is still joining (the plugin
+        # lost its connection to Rose and the user tried again) waits for it,
+        # rather than starting the background loops a second time
+        async with self._enable_lock:
+            return await self._enable()
 
-        Kaleido: with `group` ({"name", "key"}) we also join the permanent group
-        room, so everyone holding the group code meets there automatically.
-        """
+    async def _enable(self) -> str:
         if self.party_state.enabled:
             return self._fresh_token() or ""
 
@@ -158,24 +158,13 @@ class PartyManager:
 
             # Same key every session, so the token friends already have keeps working
             self._my_key = load_party_key(my_summoner_id)
+            self._identity_key = load_party_identity_key(my_summoner_id)
             self._home_room = compute_room_key(my_summoner_id, self._my_key)
             self._running = True
 
             error = await self._join_room(self._home_room)
             if error:
                 raise RuntimeError(Text("Couldn't reach the party server: {error}", error=error))
-
-            # Kaleido: permanent group room next to our own room
-            self._group_room = None
-            self.party_state.group_name = None
-            if group and group.get("key"):
-                group_room = compute_group_room_key(str(group["key"]))
-                group_error = await self._join_room(group_room)
-                if group_error:
-                    log.warning(f"[PARTY] Could not join group room {group_room[:8]}: {group_error}")
-                else:
-                    self._group_room = group_room
-                    self.party_state.group_name = group.get("name")
 
             self.party_state.enabled = True
             self.party_state.connection = "online"
@@ -184,7 +173,7 @@ class PartyManager:
             self._lobby_check_task = asyncio.create_task(self._lobby_check_loop())
             self._skin_broadcast_task = asyncio.create_task(self._skin_broadcast_loop())
 
-            log.info(f"[PARTY] Party mode enabled. Token: {self.party_state.my_token[:20]}...")
+            log.info("[PARTY] Party mode enabled")
             self._notify_state_change()
             return self.party_state.my_token
 
@@ -215,14 +204,14 @@ class PartyManager:
             await asyncio.gather(*(relay.disconnect() for relay in relays), return_exceptions=True)
 
         self._unreachable_rooms.clear()
+        self._member_keys.clear()
         self._ignored_peers.clear()
         self._skin_state = None
         self._published_state = None
         self.party_state.clear_all()
         self._my_key = None
+        self._identity_key = None
         self._home_room = None
-        self._group_room = None
-        self._seen_events.clear()
 
         log.info("[PARTY] Party mode disabled")
         self._notify_state_change()
@@ -255,7 +244,9 @@ class PartyManager:
             await self._publish_state()
         room_key = compute_room_key(token.summoner_id, token.encryption_key)
 
-        if room_key not in self._relays:
+        if room_key in self._relays:
+            self._relays[room_key].resume()
+        else:
             if len(self._relays) >= MAX_ROOMS:
                 return False, "You're linked to too many parties. Disable and re-enable party mode, then try again."
             error = await self._join_room(room_key)
@@ -309,75 +300,6 @@ class PartyManager:
             self.party_state.my_token = self._fresh_token()
         return self.party_state.to_dict()
 
-    # ─── Kaleido social API ──────────────────────────────────────────────
-
-    def set_social_hooks(self, on_event=None, on_peer_skin=None, on_room_changed=None, on_peer_online=None):
-        self._on_event = on_event
-        self._on_peer_skin = on_peer_skin
-        self._on_room_changed = on_room_changed
-        self._on_peer_online = on_peer_online
-
-    @property
-    def relay_connected(self) -> bool:
-        """Whether any of our rooms is currently connected."""
-        return any(relay.connected for relay in list(self._relays.values()))
-
-    def _social_relays(self) -> List[PartyRelay]:
-        """Rooms social messages go through: every connected room, so both
-        token friends (our room) and the group room hear them."""
-        return [relay for relay in list(self._relays.values()) if relay.connected]
-
-    async def send_event(self, event: str, data: Optional[dict] = None, to: Optional[int] = None) -> bool:
-        relays = self._social_relays()
-        if not relays:
-            return False
-        payload = dict(data or {})
-        payload.setdefault("_eid", secrets.token_hex(6))  # dedupe across shared rooms
-        results = await asyncio.gather(*(relay.send_event(event, payload, to) for relay in relays), return_exceptions=True)
-        return any(r is True for r in results)
-
-    async def set_room_value(self, key: str, value) -> bool:
-        relays = self._social_relays()
-        if not relays:
-            return False
-        results = await asyncio.gather(*(relay.send_room_set(key, value) for relay in relays), return_exceptions=True)
-        return any(r is True for r in results)
-
-    def _merged_room_state(self) -> dict:
-        """Shared room state seen by the UI: our room first, the group room wins."""
-        merged: dict = {}
-        ordered = sorted(self._relays.items(), key=lambda kv: kv[0] == self._group_room)
-        for _, relay in ordered:
-            room = getattr(relay, "room_state", None)
-            if isinstance(room, dict) and room:
-                merged.update(room)
-        return merged
-
-    def _on_relay_event(self, msg: dict):
-        """Relay 'event' message: keep the last one for the UI and hand it to the social handler."""
-        try:
-            data = msg.get("data")
-            eid = data.get("_eid") if isinstance(data, dict) else None
-            if eid:
-                if eid in self._seen_events:
-                    return
-                self._seen_events.append(eid)
-                if len(self._seen_events) > 64:
-                    del self._seen_events[:-64]
-        except Exception:
-            pass
-        try:
-            self.party_state.last_event = {
-                "event": msg.get("event"), "data": msg.get("data"), "from": msg.get("from"), "ts": msg.get("ts"),
-            }
-        except Exception:
-            pass
-        if self._on_event:
-            try:
-                self._on_event(msg)
-            except Exception as e:
-                log.debug(f"[PARTY] event hook error: {e}")
-
     def _fresh_token(self) -> Optional[str]:
         if not self._my_key or not self.party_state.my_summoner_id:
             return None
@@ -393,18 +315,18 @@ class PartyManager:
             room_key,
             self.party_state.my_summoner_id,
             self.party_state.my_summoner_name,
+            self._identity_key,
         )
         relay.set_callbacks(
             on_members_changed=self._on_relay_members_changed,
             on_connection_changed=self._on_relay_connection_changed,
         )
-        relay.set_on_event(self._on_relay_event)
         self._relays[room_key] = relay
         return relay
 
     async def _connect_relay(self, relay: PartyRelay) -> Optional[str]:
         """Connect a registered room. Returns an error message on failure."""
-        # Send our current state along with the join
+        # Keep our current state ready to send when the relay lists other members
         await relay.send_state(self._published_state)
         connected = await relay.connect()
 
@@ -430,7 +352,9 @@ class PartyManager:
     async def _follow_room(self, relay: PartyRelay):
         error = await self._connect_relay(relay)
         if error and self._running:
-            self._unreachable_rooms[relay.room_key] = time.monotonic()
+            self._unreachable_rooms[relay.room_key] = (
+                float("inf") if relay.permanently_refused else time.monotonic() + FOLLOW_RETRY_S
+            )
             log.warning(f"[PARTY] Could not join room {relay.room_key[:8]}: {error}")
 
     def _follow_advertised_rooms(self):
@@ -450,8 +374,8 @@ class PartyManager:
                     continue
                 if room_key in self._relays:
                     continue
-                failed_at = self._unreachable_rooms.get(room_key)
-                if failed_at is not None and now - failed_at < FOLLOW_RETRY_S:
+                retry_at = self._unreachable_rooms.get(room_key)
+                if retry_at is not None and now < retry_at:
                     continue
                 if len(self._relays) >= MAX_ROOMS:
                     log.warning(f"[PARTY] Already in {MAX_ROOMS} rooms, not joining more")
@@ -468,7 +392,7 @@ class PartyManager:
             state["rooms"] = sorted(self._relays)[:MAX_ROOMS]
         if self._ignored_peers:
             # The friends we removed hide us too (see _merged_members)
-            state["removed"] = sorted(self._ignored_peers)
+            state["removed"] = [str(sid) for sid in sorted(self._ignored_peers)]
         if state:
             state["sent_at"] = int(time.time() * 1000)
         else:
@@ -479,19 +403,24 @@ class PartyManager:
         if relays:
             await asyncio.gather(*(relay.send_state(state) for relay in relays), return_exceptions=True)
 
+    def _trusted_member_id(self, member: dict) -> Optional[int]:
+        sid = _to_int(member.get("summoner_id"))
+        key = self._member_keys.get(sid)
+        return sid if key is not None and key == member.get("member_key") else None
+
     def _merged_members(self) -> Dict[int, Tuple[dict, bool]]:
         """Members of all our rooms, one entry per summoner, with whether
         they're seen in a connected room.
 
-        The newest state wins, so a stale copy (a connection the relay hasn't
-        dropped yet, or a room that hasn't received the update yet) is ignored.
+        For the same identity, the newest state wins. A room that registered
+        the same summoner ID with a different credential cannot replace it.
         """
         my_id = self.party_state.my_summoner_id
         merged: Dict[int, Tuple[dict, bool]] = {}
 
         for relay in list(self._relays.values()):
             for member in relay.members:
-                sid = _to_int(member.get("summoner_id"))
+                sid = self._trusted_member_id(member)
                 if not sid or sid == my_id or sid in self._ignored_peers:
                     continue
                 previous = merged.get(sid)
@@ -506,12 +435,13 @@ class PartyManager:
 
     def _peers_who_removed_us(self) -> Set[int]:
         my_id = self.party_state.my_summoner_id
-        return {
-            _to_int(member.get("summoner_id"))
-            for relay in list(self._relays.values())
-            for member in relay.members
-            if _removed(member, my_id)
-        }
+        removed = set()
+        for relay in list(self._relays.values()):
+            for member in relay.members:
+                sid = self._trusted_member_id(member)
+                if sid is not None and _removed(member, my_id):
+                    removed.add(sid)
+        return removed
 
     async def _wait_for_peer(self, summoner_id: int, timeout: float) -> Optional[str]:
         """Wait until a summoner shows up in one of our rooms; returns their name."""
@@ -528,6 +458,10 @@ class PartyManager:
 
     def _on_relay_members_changed(self, relay: PartyRelay):
         """Called by a relay when its member list changes."""
+        if self._relays.get(relay.room_key) is not relay:
+            return
+        for member in relay.members:
+            self._member_keys.setdefault(member["summoner_id"], member["member_key"])
         self._refresh_peers()
         self._follow_advertised_rooms()
 
@@ -542,9 +476,7 @@ class PartyManager:
 
         for sid, (member, connected) in merged.items():
             name = str(member.get("summoner_name") or "Unknown")
-            is_new = sid not in self.party_state.peers
-            previous = None if is_new else self.party_state.peers[sid].skin_selection
-            if is_new:
+            if sid not in self.party_state.peers:
                 log.info(f"[PARTY] {name} joined the party")
             self.party_state.add_peer(
                 sid,
@@ -552,25 +484,12 @@ class PartyManager:
                 connected=connected,
                 connection_state="connected" if connected else "reconnecting",
             )
-            if is_new and self._on_peer_online and self.party_state.group_name:
-                try:
-                    self._on_peer_online(sid, name)
-                except Exception as e:
-                    log.debug(f"[PARTY] peer online hook error: {e}")
 
             selection = self._selection_from_member(sid, name, member)
             if selection:
                 self.party_state.update_peer_skin(sid, selection)
                 if self._skin_collector:
                     self._skin_collector.update_from_peer(selection)
-                changed = (previous is None or previous.skin_id != selection.skin_id
-                           or previous.chroma_id != selection.chroma_id
-                           or previous.champion_id != selection.champion_id)
-                if changed and self._on_peer_skin:
-                    try:
-                        self._on_peer_skin(sid, name, selection)
-                    except Exception as e:
-                        log.debug(f"[PARTY] peer skin hook error: {e}")
             else:
                 self.party_state.clear_peer_skin(sid)
 
@@ -584,20 +503,6 @@ class PartyManager:
         if self.party_state.enabled:
             home = self._relays.get(self._home_room)
             self.party_state.connection = "online" if home and home.connected else "reconnecting"
-
-        # Kaleido: shared room state (party color...) travels with the member list
-        try:
-            new_room = self._merged_room_state()
-            if new_room != self.party_state.room:
-                old_room = self.party_state.room
-                self.party_state.room = new_room
-                if self._on_room_changed:
-                    try:
-                        self._on_room_changed(old_room, new_room)
-                    except Exception as e:
-                        log.debug(f"[PARTY] room hook error: {e}")
-        except Exception:
-            pass
 
         self._notify_state_change()
 
@@ -638,6 +543,7 @@ class PartyManager:
                         changed = True
                         if in_lobby:
                             log.info(f"[PARTY] Peer {peer.summoner_name} joined our lobby")
+                            self._resume_rooms()
                         else:
                             log.info(f"[PARTY] Peer {peer.summoner_name} left our lobby")
                 if changed:
@@ -652,11 +558,18 @@ class PartyManager:
         """Broadcast our pick once it settles, or at once when our injection starts."""
         pending = None
         pending_since = 0.0
+        phase = None
         while self._running:
             try:
                 await asyncio.sleep(SKIN_BROADCAST_INTERVAL)
                 if not self._running:
                     continue
+
+                # The party is needed again: reconnect the rooms we gave up on
+                if self.state.phase != phase:
+                    phase = self.state.phase
+                    if phase in ("Lobby", "ChampSelect"):
+                        self._resume_rooms()
 
                 # Hashing a custom mod reads files: keep it off the event loop
                 skin_state = await asyncio.to_thread(self._current_skin_state)
@@ -680,6 +593,11 @@ class PartyManager:
                 break
             except Exception as e:
                 log.info(f"[PARTY] Skin broadcast error: {e}")
+
+    def _resume_rooms(self):
+        """Reconnect the rooms we stopped reconnecting to (see PartyRelay._run)."""
+        for relay in list(self._relays.values()):
+            relay.resume()
 
     def _selection_is_final(self) -> bool:
         collector = self._skin_collector
@@ -712,14 +630,15 @@ class PartyManager:
             "chroma_id": selection.chroma_id,
         }
 
-        # For custom mods, share content hashes instead of the files
         if selection.custom_mod_path:
-            content_hash, legacy_hash = mod_hashes(get_mods_root() / selection.custom_mod_path)
-            if content_hash:
+            content_hash, legacy_hash = saved_mod_hashes(selection.custom_mod_path)
+            if content_hash or legacy_hash:
                 skin_state["is_custom"] = True
-                skin_state["custom_mod_content_hash"] = content_hash
+                if content_hash:
+                    skin_state["custom_mod_content_hash"] = content_hash
                 if legacy_hash:
-                    # Older Rose versions match archive mods by whole-file hash
+                    # The hash of the file picked: a friend's exact copy has it
+                    # (older Rose versions match archive mods by it too)
                     skin_state["custom_mod_hash"] = legacy_hash
 
         return skin_state

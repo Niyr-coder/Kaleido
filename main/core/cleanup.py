@@ -4,11 +4,10 @@
 Cleanup logic for application shutdown
 """
 
-import os
 import sys
 
 import utils.integration.pengu_loader as pengu_loader
-from utils.core.logging import get_logger, log_section, log_success
+from utils.core.logging import exit_now, get_logger, log_section, log_success
 from utils.threading.thread_manager import ThreadManager
 from utils.integration.tray_manager import TrayManager
 from state import SharedState
@@ -22,28 +21,32 @@ log = get_logger()
 
 def perform_cleanup(state: SharedState, thread_manager: ThreadManager, tray_manager: TrayManager, injection_manager=None) -> None:
     """Perform application cleanup"""
+    # The main loop is done: the tray's force-quit timeout stands down, or it
+    # ends the cleanup halfway (restoring the client alone takes seconds)
+    get_app_state().shutting_down = True
     log_section(log, "Cleanup", "")
 
-    # A suspension outlives Rose: resume first, or closing during mkoverlay freezes the game for good
-    if injection_manager:
-        try:
-            injection_manager.resume_if_suspended()
-        except Exception as e:
-            log.warning(f"Error resuming suspended game during cleanup: {e}")
+    # A game held for the patcher outlives Rose: resume it first, or quitting
+    # Rose during the hold freezes the game for good
+    try:
+        from injection.game.game_monitor import resume_orphaned_game
+        resume_orphaned_game()
+    except Exception as e:
+        log.warning(f"Error resuming a held game during cleanup: {e}")
 
     try:
         pengu_loader.deactivate_on_exit()
     except Exception as e:
         log.warning(f"Error deactivating Pengu Loader during cleanup: {e}")
 
-    # Kill all mod-tools.exe processes before shutting down
+    # Kill every LTK Manager before shutting down
     if injection_manager:
         try:
-            log.info("Killing mod-tools.exe processes...")
+            log.info("Killing LTK Manager processes...")
             injection_manager.kill_all_modtools_processes()
-            log_success(log, "Mod-tools processes killed", "")
+            log_success(log, "LTK Manager processes killed", "")
         except Exception as e:
-            log.warning(f"Error killing mod-tools processes: {e}")
+            log.warning(f"Error killing LTK Manager processes: {e}")
     
     # Stop system tray
     if tray_manager:
@@ -68,7 +71,7 @@ def perform_cleanup(state: SharedState, thread_manager: ThreadManager, tray_mana
         # Force exit after timeout
         if elapsed > THREAD_FORCE_EXIT_TIMEOUT_S:
             log.error(f"Forced exit after {elapsed:.1f}s - threads still running")
-            os._exit(0)  # Force immediate exit without waiting for threads
+            exit_now(0)  # Force the exit without waiting for threads (the log is written first)
     else:
         log_success(log, f"All threads stopped cleanly in {elapsed:.1f}s", "")
     

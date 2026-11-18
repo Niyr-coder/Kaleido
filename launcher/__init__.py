@@ -9,15 +9,14 @@ Main entry point for launcher functionality
 from .core.launcher import run_launcher
 from .updater import auto_update
 
-# Re-export subpackage classes for convenience
 from .update.update_sequence import UpdateSequence
 from .update.update_downloader import UpdateDownloader
 from .update.update_installer import UpdateInstaller
 from .update.github_client import GitHubClient
 from .ui.update_dialog import UpdateDialog
 from .sequences.hash_check_sequence import HashCheckSequence
-from .sequences.patcher_check_sequence import PatcherCheckSequence
 from .sequences.skin_sync_sequence import SkinSyncSequence
+from .sequences.mod_migration_sequence import ModMigrationSequence
 
 __all__ = [
     'run_launcher',
@@ -28,6 +27,6 @@ __all__ = [
     'GitHubClient',
     'UpdateDialog',
     'HashCheckSequence',
-    'PatcherCheckSequence',
     'SkinSyncSequence',
+    'ModMigrationSequence',
 ]

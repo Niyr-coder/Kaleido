@@ -34,6 +34,7 @@
   let panel = null;
   let panelButtonRef = null;
   let panelSkinItemRef = null;
+  let panelDismissListener = null;
   let customButtonIconUrl = null;
   let selectionRequestCounter = 0;
   let pendingSelectionRequest = null;
@@ -261,6 +262,12 @@
       previousPhase === "ChampSelect"
     ) {
       resetCustomSkinSessionState();
+    }
+
+    if (phase === "InProgress") {
+      stopSkinObserver();
+    } else {
+      startSkinObserver();
     }
   }
 
@@ -688,6 +695,10 @@
   function closePanel() {
     const existing = document.getElementById(PANEL_ID);
     if (existing) existing.remove();
+    if (panelDismissListener) {
+      document.removeEventListener("click", panelDismissListener);
+      panelDismissListener = null;
+    }
     panel = null; panelButtonRef = null; panelSkinItemRef = null;
   }
 
@@ -703,13 +714,33 @@
     document.body.appendChild(panel);
     positionPanel(panel, buttonElement);
 
+    const dismissListener = (event) => {
+      if (!panel || !panel.parentNode) {
+        closePanel();
+        return;
+      }
+      if (panel.contains(event.target) || buttonElement.contains(event.target)) return;
+      closePanel();
+    };
+    panelDismissListener = dismissListener;
     setTimeout(() => {
-      document.addEventListener("click", function ch(e) {
-        if (!panel || !panel.parentNode) { document.removeEventListener("click", ch); return; }
-        if (panel.contains(e.target) || buttonElement.contains(e.target)) return;
-        closePanel(); document.removeEventListener("click", ch);
-      });
+      if (panelDismissListener === dismissListener && panel?.parentNode) {
+        document.addEventListener("click", dismissListener);
+      }
     }, 100);
+  }
+
+  function refreshOpenPanel() {
+    if (!panel || !panel.parentNode || !panelButtonRef) return;
+    const button = panelButtonRef;
+    const rebuilt = createPanelForMods(modsForCurrentSkin, button);
+    if (!rebuilt) {
+      closePanel();
+      return;
+    }
+    panel = rebuilt;
+    document.body.appendChild(panel);
+    positionPanel(panel, button);
   }
 
   function ensureButtonOnItem(skinItem) {
@@ -812,7 +843,14 @@
     }
 
     scanSkinSelection();
-    if (panel && panel.parentNode && panelButtonRef) closePanel();
+    refreshOpenPanel();
+  }
+
+  function handleModImageUpdated(data) {
+    if (!data?.success || Number(data.championId) !== getCurrentSkinContext().championId) return;
+    lastSkinModsRequestKey = null;
+    lastSkinModsRequestAt = 0;
+    requestModsForCurrentSkin();
   }
 
   function handleSkinState(event) {
@@ -825,10 +863,25 @@
     if (panel && panel.parentNode && panelButtonRef) positionPanel(panel, panelButtonRef);
   }
 
-  function observeSkinSelection() {
-    const observer = new MutationObserver(() => scanSkinSelection());
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "aria-selected"] });
-    setInterval(scanSkinSelection, 500);
+  // Observer lifecycle: stopped while a game is running (InProgress) so the
+  // DOM scan doesn't steal CPU from the game; Swiftplay picks skins in the
+  // Lobby phase, so it runs in every other phase. See GitHub issue #22.
+  let skinObserver = null;
+  let skinScanTimer = null;
+
+  function startSkinObserver() {
+    if (skinObserver) return;
+    skinObserver = new MutationObserver(() => scanSkinSelection());
+    skinObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "aria-selected"] });
+    skinScanTimer = setInterval(scanSkinSelection, 500);
+  }
+
+  function stopSkinObserver() {
+    if (!skinObserver) return;
+    skinObserver.disconnect();
+    skinObserver = null;
+    clearInterval(skinScanTimer);
+    skinScanTimer = null;
   }
 
   async function init() {
@@ -844,6 +897,7 @@
 
     if (bridge) {
       bridge.subscribe("skin-mods-response", (data) => handleModsResponse({ detail: data }));
+      bridge.subscribe("champion-mod-image-updated", handleModImageUpdated);
       bridge.subscribe("custom-mod-selection-result", (data) => handleSelectionResult({ detail: data }));
       bridge.subscribe("chroma-state", handleChromaStateUpdate);
       bridge.subscribe("phase-change", handlePhaseChange);
@@ -883,7 +937,7 @@
     window.addEventListener("resize", () => { if (panel && panel.parentNode && panelButtonRef) positionPanel(panel, panelButtonRef); });
     window.addEventListener("scroll", () => { if (panel && panel.parentNode && panelButtonRef) positionPanel(panel, panelButtonRef); });
 
-    observeSkinSelection();
+    if (currentPhase !== "InProgress") startSkinObserver();
     requestModsForCurrentSkin();
     scanSkinSelection();
   }

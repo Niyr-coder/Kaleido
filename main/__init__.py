@@ -18,76 +18,56 @@ if sys.version_info < MIN_PYTHON:
     )
 
 
-def _get_tools_dir() -> Path:
-    """Get the tools directory path (works in both frozen and development environments)"""
-    if getattr(sys, 'frozen', False):
-        # Running as compiled executable (PyInstaller)
-        if hasattr(sys, '_MEIPASS'):
-            # One-file mode: tools are in _MEIPASS
-            base_path = Path(sys._MEIPASS)
-            return base_path / "injection" / "tools"
-        else:
-            # One-dir mode: tools are alongside executable
-            base_dir = Path(sys.executable).parent
-            possible_dirs = [
-                base_dir / "injection" / "tools",
-                base_dir / "_internal" / "injection" / "tools",
-            ]
-            for dir_path in possible_dirs:
-                if dir_path.exists():
-                    return dir_path
-            return possible_dirs[0]
-    else:
-        # Running as Python script
-        return Path(__file__).parent.parent / "injection" / "tools"
+LTK_MANAGER_DOWNLOAD_URL = "https://github.com/LeagueToolkit/ltk-manager/releases"
 
 
 def _dll_dialog_text(reason: str, detail: str = ""):
-    """Return (title, status_title, status_body, steps) for an LTK patcher problem."""
-    # Kaleido downloads the LTK patcher automatically at launch; this dialog only
-    # shows when that failed, so the steps lead with checking the connection and
-    # keep LTK Manager as a manual fallback.
-    manual = (
-        "1. Check your internet connection and restart Kaleido so it can download the patcher.\n"
-        "2. If it keeps failing, install LTK Manager and copy ltk_patcher_host.exe and "
-        "ltk_patcher_dll.dll from it.\n"
-        "3. Open Kaleido's tools folder, place both files there, then restart Kaleido."
-    )
-    if reason == "expired":
+    """Return (title, status_title, status_body, steps, action) for an injection
+    runtime problem; *action* is the label of the button that fixes it."""
+    if reason == "no_manager":
         return (
-            "Kaleido - Patcher Outdated",
-            "The LTK patcher has reached its end of life",
-            f"The LTK patcher stopped supporting new game builds on {detail}, and Kaleido could not "
-            "download a newer one.",
-            manual,
-        )
-    if reason == "invalid":
-        return (
-            "Kaleido - Broken Patcher",
-            "The LTK patcher could not be prepared",
-            "The ltk_patcher_dll.dll in Kaleido's tools folder is not a recognized LTK patcher DLL, "
-            "and Kaleido could not download a replacement.",
-            manual,
+            "Kaleido - LTK Manager Missing",
+            "Kaleido can't find LTK Manager",
+            "Kaleido applies skins through LTK Manager. It only has to be installed: Kaleido "
+            "opens it in the background during champ select and closes it after the game, "
+            "so you never have to open it yourself.",
+            f"1. Install LTK Manager ({LTK_MANAGER_DOWNLOAD_URL}), then restart Kaleido.\n"
+            "2. Already installed in another folder? Click Set up path and select its "
+            "ltk-manager.exe: Kaleido remembers it and starts right away.",
+            "Set up path",
         )
     return (
-        "Kaleido - Missing Patcher",
-        "The injection patcher is missing",
-        f"Kaleido needs {detail or 'the LTK patcher'} and could not download it automatically.",
-        manual,
+        "Kaleido - Missing Component",
+        "One Kaleido component is missing",
+        f"Kaleido needs {detail or 'its bridge files'} in its tools folder before it can start.",
+        "1. Reinstall Kaleido: these files are part of every install.\n"
+        "2. If an antivirus removed them, restore the files or add Kaleido's folder to its exclusions.\n"
+        "3. Restart Kaleido.",
+        "Open tools folder",
     )
 
 
-def _show_native_dll_dialog(tools_dir, reason="missing", detail=""):
-    """Show the DLL error with the native Windows Task Dialog API."""
+def _with_links(text: str) -> str:
+    """The text with its web addresses as Task Dialog hyperlinks."""
+    import re
+
+    return re.sub(r"(https?://[^\s)]+)", r'<a href="\1">\1</a>', text)
+
+
+def _show_native_dll_dialog(reason="missing", detail=""):
+    """Show the DLL error with the native Windows Task Dialog API.
+
+    Returns "fix" (the button that fixes it), "close", or None when the
+    Task Dialog is not available.
+    """
     if sys.platform != "win32":
         return None
 
     import ctypes
     from ctypes import wintypes
-    import subprocess
     import webbrowser
 
-    title, status_title, status_body, steps = _dll_dialog_text(reason, detail)
+    title, status_title, status_body, steps, action = _dll_dialog_text(reason, detail)
 
     class TaskDialogButton(ctypes.Structure):
         _pack_ = 1
@@ -128,13 +108,11 @@ def _show_native_dll_dialog(tools_dir, reason="missing", detail=""):
     button_open = 1001
     button_close = 1002
     buttons = (TaskDialogButton * 2)(
-        TaskDialogButton(button_open, "Open tools folder"),
+        TaskDialogButton(button_open, action),
         TaskDialogButton(button_close, "Close Kaleido"),
     )
-    content = (
-        f"{status_body}\n\nHow to fix it:\n{steps}"
-    )
-    footer = "Please do not request or share this file in Discord. Kaleido cannot distribute it because of licensing restrictions."
+    content = _with_links(f"{status_body}\n\nHow to fix it:\n{steps}")
+    footer = _with_links("Need help? Join the Kaleido Discord: https://discord.gg/bsb8yEAMpE")
     assets_dirs = []
     if hasattr(sys, "_MEIPASS"):
         assets_dirs.append(Path(sys._MEIPASS) / "assets")
@@ -251,94 +229,164 @@ def _show_native_dll_dialog(tools_dir, reason="missing", detail=""):
 
     if result != 0:
         return None
-    if selected_button.value == button_open:
-        try:
-            subprocess.run(["explorer", str(tools_dir)], check=False)
-        except Exception:
-            pass
-    return False
+    return "fix" if selected_button.value == button_open else "close"
 
 
-def _show_dll_dialog(tools_dir, reason="missing", detail="") -> bool:
-    """Show a native recovery dialog before the main app starts."""
-    import subprocess
-    import webbrowser
+def _show_fallback_dll_dialog(reason="missing", detail="") -> str:
+    """The same choice as a MessageBox, when the Task Dialog is unavailable.
 
-    native_result = _show_native_dll_dialog(tools_dir, reason, detail)
-    if native_result is not None:
-        return native_result
-
-    # Keep the recovery UI native-only if TaskDialogIndirect is unavailable.
-    # This is intentionally a Windows MessageBox rather than a Tk fallback.
+    Intentionally a Windows MessageBox rather than a Tk fallback.
+    """
     import ctypes
-    tools_dir.mkdir(parents=True, exist_ok=True)
-    title, status_title, status_body, steps = _dll_dialog_text(reason, detail)
+
+    title, status_title, status_body, steps, action = _dll_dialog_text(reason, detail)
     message = (
         f"{status_title}\n\n{status_body}\n\nHow to fix it:\n{steps}\n\n"
-        "Please do not request or share this file in Discord.\n"
         "Discord: https://discord.gg/bsb8yEAMpE\n\n"
-        "Press OK to open the tools folder, or Cancel to close Kaleido."
+        f"Press OK to {action.lower()}, or Cancel to close Kaleido."
     )
     response = ctypes.windll.user32.MessageBoxW(
         0, message, title, 0x00000001 | 0x00000030 | 0x00040000
     )
-    if response == 1:
-        try:
-            subprocess.run(["explorer", str(tools_dir)], check=False)
-        except Exception:
-            pass
-    return False
+    return "fix" if response == 1 else "close"
 
 
-def _sync_cslol_stub(tools_dir: Path) -> None:
-    """Replace cslol-dll.dll with Rose's stand-in when they differ.
+def _pick_ltk_manager() -> Optional[Path]:
+    """Ask for LTK Manager's executable with the Windows file picker (None if cancelled)."""
+    import ctypes
+    import os
+    from ctypes import wintypes
 
-    Updaters before this change skip cslol-dll.dll, so an update leaves the
-    user's own copy in place. The stand-in ships again as cslol-dll.stub,
-    which they do copy.
-    """
-    stub = tools_dir / "cslol-dll.stub"
-    target = tools_dir / "cslol-dll.dll"
+    class OpenFileName(ctypes.Structure):
+        _fields_ = [
+            ("lStructSize", wintypes.DWORD),
+            ("hwndOwner", wintypes.HWND),
+            ("hInstance", wintypes.HINSTANCE),
+            ("lpstrFilter", wintypes.LPCWSTR),
+            ("lpstrCustomFilter", wintypes.LPWSTR),
+            ("nMaxCustFilter", wintypes.DWORD),
+            ("nFilterIndex", wintypes.DWORD),
+            ("lpstrFile", wintypes.LPWSTR),
+            ("nMaxFile", wintypes.DWORD),
+            ("lpstrFileTitle", wintypes.LPWSTR),
+            ("nMaxFileTitle", wintypes.DWORD),
+            ("lpstrInitialDir", wintypes.LPCWSTR),
+            ("lpstrTitle", wintypes.LPCWSTR),
+            ("Flags", wintypes.DWORD),
+            ("nFileOffset", wintypes.WORD),
+            ("nFileExtension", wintypes.WORD),
+            ("lpstrDefExt", wintypes.LPCWSTR),
+            ("lCustData", wintypes.LPARAM),
+            ("lpfnHook", ctypes.c_void_p),
+            ("lpTemplateName", wintypes.LPCWSTR),
+            ("pvReserved", ctypes.c_void_p),
+            ("dwReserved", wintypes.DWORD),
+            ("FlagsEx", wintypes.DWORD),
+        ]
+
+    # Pairs of label and pattern, each ending in a NUL, the list in a second one
+    file_filter = ctypes.create_unicode_buffer(
+        "LTK Manager (ltk-manager.exe)\0ltk-manager.exe;LTK Manager.exe\0Programs (*.exe)\0*.exe\0\0"
+    )
+    file_buffer = ctypes.create_unicode_buffer(1024)
+    initial_dir = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or ""
+    dialog = OpenFileName(
+        lStructSize=ctypes.sizeof(OpenFileName),
+        lpstrFilter=ctypes.cast(file_filter, wintypes.LPCWSTR),
+        nFilterIndex=1,
+        lpstrFile=ctypes.cast(file_buffer, wintypes.LPWSTR),
+        nMaxFile=len(file_buffer),
+        lpstrInitialDir=initial_dir or None,
+        lpstrTitle="Select LTK Manager (ltk-manager.exe)",
+        # OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER | OFN_DONTADDTORECENT
+        Flags=0x1000 | 0x0800 | 0x0008 | 0x00080000 | 0x02000000,
+    )
     try:
-        if not stub.is_file():
-            return
-        if target.is_file() and target.read_bytes() == stub.read_bytes():
-            return
-        import shutil
-        shutil.copyfile(stub, target)
-    except OSError:
-        pass  # The tools check reports a missing DLL when injection needs it
+        picked = ctypes.windll.comdlg32.GetOpenFileNameW(ctypes.byref(dialog))
+    except (AttributeError, OSError, ctypes.ArgumentError) as exc:
+        log.warning(f"[DLL] Could not open the file picker: {exc}")
+        return None
+    return Path(file_buffer.value) if picked and file_buffer.value else None
+
+
+def _set_up_ltk_manager_path(tools_dir) -> Optional[bool]:
+    """Let the user point Kaleido at LTK Manager and save it as ltkManagerPath.
+
+    True once Rose finds LTK Manager there, None when the user cancelled or
+    picked something else (the dialog shows again).
+    """
+    import ctypes
+
+    from config import set_config_option
+    from injection.tools.tools_manager import LTK_MANAGER_EXECUTABLES, ToolsManager
+
+    picked = _pick_ltk_manager()
+    if picked is None:
+        return None
+    message_flags = 0x00000030 | 0x00040000  # MB_ICONWARNING | MB_TOPMOST
+    if picked.name.lower() not in {name.lower() for name in LTK_MANAGER_EXECUTABLES}:
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            f"{picked.name} is not LTK Manager.\n\nSelect ltk-manager.exe in the folder LTK Manager "
+            "is installed in.",
+            "Kaleido - LTK Manager Missing",
+            message_flags,
+        )
+        return None
+    set_config_option("General", "ltkManagerPath", str(picked))
+    if ToolsManager(tools_dir).detect_ltk_manager() is None:
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Kaleido could not save the path in its config.ini.\n\nCheck that Kaleido can write to "
+            "%LOCALAPPDATA%\\Rose, then try again.",
+            "Kaleido - LTK Manager Missing",
+            message_flags,
+        )
+        return None
+    log.info(f"[DLL] LTK Manager set up at {picked}")
+    return True
+
+
+def _show_dll_dialog(tools_dir, reason="missing", detail="") -> bool:
+    """Show a native recovery dialog before the main app starts.
+
+    Returns whether Rose can start (LTK Manager was set up from the dialog).
+    """
+    import subprocess
+
+    while True:
+        choice = _show_native_dll_dialog(reason, detail)
+        if choice is None:
+            choice = _show_fallback_dll_dialog(reason, detail)
+        if choice != "fix":
+            return False
+        if reason == "no_manager":
+            if _set_up_ltk_manager_path(tools_dir):
+                return True
+            continue  # cancelled or not LTK Manager: back to the dialog
+        try:
+            tools_dir.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["explorer", str(tools_dir)], check=False)
+        except Exception as exc:
+            log.warning(f"[DLL] Could not open the tools folder: {exc}")
+        return False
 
 
 def _check_dll_present() -> bool:
-    """Check that the user-provided LTK patcher is present and not past its end of life."""
+    """Check that Kaleido's LTF bridge is present and LTK Manager is installed."""
     import sys
     if sys.platform != "win32":
         return True  # Only relevant on Windows
 
-    from injection.tools.patcher import check_ltk_patcher
+    from injection.tools.tools_manager import LTF_BRIDGE_DLL, LTF_LAUNCHER, ToolsManager
+    from utils.core.paths import get_tools_dir
 
-    tools_dir = _get_tools_dir()
-    _sync_cslol_stub(tools_dir)
-
-    # Kaleido: fetch/refresh the LTK patcher automatically (the launcher already
-    # tries this; repeat here so a direct start self-heals before we give up).
-    try:
-        from injection.tools.patcher_downloader import ensure_ltk_patcher, needs_refresh
-        if needs_refresh(tools_dir):
-            ensure_ltk_patcher(tools_dir)
-    except Exception:
-        pass  # Fall through to the guided dialog below
-
-    status = check_ltk_patcher(tools_dir)
-    if status.missing:
-        return _show_dll_dialog(tools_dir, reason="missing", detail=" and ".join(status.missing))
-    if status.eol is None:
-        return _show_dll_dialog(tools_dir, reason="invalid")
-    # Do NOT block on a wall-clock EOL here. The LTK patcher refuses game builds
-    # newer than its EOL, not "the current time", so a patcher past its calendar
-    # date still injects the live game until Riot ships a newer build. Injection
-    # checks the real game build (overlay_manager.rejects_game) and reports then.
+    tools_dir = get_tools_dir()
+    missing = [name for name in (LTF_LAUNCHER, LTF_BRIDGE_DLL) if not (tools_dir / name).exists()]
+    if missing:
+        return _show_dll_dialog(tools_dir, reason="missing", detail=" and ".join(missing))
+    if ToolsManager(tools_dir).detect_ltk_manager() is None:
+        return _show_dll_dialog(tools_dir, reason="no_manager")
     return True
 
 
@@ -354,7 +402,7 @@ setup_signal_handlers()
 
 # Now import everything else
 from .setup.arguments import setup_arguments
-from .setup.initialization import setup_logging_and_cleanup, initialize_tray_manager
+from .setup.initialization import convert_stored_mods, setup_logging_and_cleanup, initialize_tray_manager
 from .core.lockfile import check_single_instance
 from .core.initialization import initialize_core_components
 from .core.threads import initialize_threads
@@ -365,13 +413,84 @@ from .runtime.loop import run_main_loop
 import utils.integration.pengu_loader as pengu_loader
 from state import AppStatus
 from utils.core.logging import get_logger, log_success
-from utils.threading.thread_manager import create_daemon_thread
-from config import APP_VERSION, MAIN_LOOP_FORCE_QUIT_TIMEOUT_S, set_config_option
+from utils.core.issue_reporter import report_issue
+from utils.threading.thread_manager import ThreadManager, create_daemon_thread
+from config import APP_VERSION, MAIN_LOOP_FORCE_QUIT_TIMEOUT_S, get_config_option, set_config_option
 from injection.config.config_manager import ConfigManager
 from injection.game.game_detector import GameDetector
+from injection.mods.ltk_sync import start_saved_mods_sync
+from injection.mods.mod_facts import remove_unpacked_leftovers
 import time
 
 log = get_logger()
+
+
+def _warn_pengu_activation_failed() -> None:
+    """Tell the user Kaleido will not show in the client because Pengu Loader is not active.
+
+    Kaleido's own Troubleshooting panel lives in the client plugins, the part that
+    failed, so this has to be a Windows dialog. It runs on its own thread so
+    startup goes on while it is open.
+    """
+    log = get_logger()
+    log.error("[Pengu] Activation failed - Rose will not appear in the League client")
+    report_issue(
+        "PENGU_ACTIVATION_FAILED",
+        "error",
+        "Pengu Loader could not be activated, so Kaleido did not appear in the League client.",
+        hint="Close the League client, then restart Kaleido. If it happens again, make sure your antivirus is not blocking Pengu Loader.",
+    )
+    if sys.platform != "win32":
+        return
+
+    def show():
+        import ctypes
+        try:
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Kaleido could not activate Pengu Loader, so it will not appear in the League client.\n\n"
+                "Close the League client, then restart Kaleido.\n"
+                "If it happens again, make sure your antivirus is not blocking Pengu Loader.\n\n"
+                "Details are in %LOCALAPPDATA%\\Rose\\logs\\",
+                "Kaleido - Pengu Loader",
+                0x50030,  # MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST
+            )
+        except Exception as e:
+            log.warning(f"[Pengu] Could not show the activation warning: {e}")
+
+    create_daemon_thread(show, "PenguActivationWarning").start()
+
+
+def _warn_pengu_injection_failed(client_pid: int) -> None:
+    """Pengu Loader was activated, but the client checked once the LCU was up
+    has no Pengu module and Kaleido's plugin never reached the bridge
+    (utils.integration.startup_verifier). Called on the verifier's thread."""
+    log = get_logger()
+    report_issue(
+        "PENGU_INJECTION_FAILED",
+        "error",
+        "Pengu Loader was not loaded into the League client, so Kaleido did not appear in it.",
+        details={"client_pid": client_pid},
+        hint="Right-click Kaleido in the system tray and choose Diagnose Kaleido startup.",
+    )
+    if sys.platform != "win32":
+        return
+
+    import ctypes
+    try:
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Kaleido did not load into this League client: Pengu Loader's DLL is missing from it.\n\n"
+            "Right-click Kaleido's system tray icon and choose Diagnose Kaleido startup. "
+            "Keep League open while collecting the report.\n\n"
+            "Then send report.txt and report.json on the Kaleido Discord (https://discord.gg/bsb8yEAMpE) "
+            "or in a GitHub issue (https://github.com/Niyr-coder/Kaleido/issues), so we can find out why. "
+            "You can also paste them into an AI assistant for a first look.",
+            "Kaleido - Client injection failed",
+            0x50030,  # MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST
+        )
+    except Exception as e:
+        log.warning(f"[Pengu] Could not show the injection warning: {e}")
 
 
 def _setup_pengu_and_injection(lcu, injection_manager, activate_pengu: bool = True) -> None:
@@ -379,8 +498,9 @@ def _setup_pengu_and_injection(lcu, injection_manager, activate_pengu: bool = Tr
     Detect and save leaguepath/clientpath, then setup Pengu Loader and injection system.
 
     Args:
-        activate_pengu: If True, activate Pengu Loader (first startup).
-                        If False, skip Pengu activation (reconnection after account swap).
+        activate_pengu: If True, activate Pengu Loader (startup couldn't).
+                        If False, skip Pengu activation (done at startup, or a
+                        reconnection after account swap).
     """
     log.info("Detecting League paths...")
 
@@ -427,7 +547,8 @@ def _setup_pengu_and_injection(lcu, injection_manager, activate_pengu: bool = Tr
     # Set client path in Pengu Loader and activate (skip on reconnection)
     if activate_pengu:
         log.info("Setting client path in Pengu Loader and activating...")
-        pengu_loader.activate_on_start(str(client_path))
+        if not pengu_loader.activate_on_start(str(client_path)):
+            _warn_pengu_activation_failed()
 
     # Initialize injection system now (with detected paths already in config.ini)
     log.info("Initializing injection system...")
@@ -440,19 +561,27 @@ def _update_registry_version() -> None:
     After an auto-update the Inno Setup registry entry still shows the version
     that was originally installed.  Writing the current ``APP_VERSION`` on every
     startup keeps "Apps & features" in sync.
+
+    Inno names its entry after the AppId (``AppId={{...}}`` keeps the closing
+    ``}}``). Older installers also wrote ``Uninstall\\Rose``, which stays until
+    a newer installer runs, so that one is kept in sync too while it exists.
     """
     if sys.platform != "win32" or not getattr(sys, "frozen", False):
         return
     try:
         import winreg
-        key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Kaleido"
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE) as key:
-            winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, APP_VERSION)
-    except Exception:
-        pass
+    except ImportError:
+        return
+    uninstall = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    for name in ("{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}}_is1", "Kaleido"):
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{uninstall}\{name}", 0, winreg.KEY_SET_VALUE) as key:
+                winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, APP_VERSION)
+        except Exception:
+            pass
 
 def _schedule_restart() -> bool:
-    """Spawn a detached helper that relaunches Rose after this process exits.
+    """Spawn a detached helper that relaunches Kaleido after this process exits.
 
     The new instance cannot start while the current one is still alive because
     of the single-instance mutex, so a small batch file waits for this PID to
@@ -503,11 +632,24 @@ def _schedule_restart() -> bool:
         log.error(f"Failed to schedule restart: {e}")
         return False
 
+def _remove_unpacked_mods_while_alone() -> None:
+    """Remove the .modpkg copies earlier reads left unpacked: Kaleido runs alone
+    now and nothing has read a mod yet, so none is being unpacked."""
+    remove_unpacked_leftovers()
+
+
+def _sync_mods_changed_while_closed() -> None:
+    """Sync the saved mods with LTK Manager's library, which may have lost or
+    changed one while Kaleido was closed."""
+    start_saved_mods_sync(only_if_changed=False)
+
+
 def run_league_unlock(args: Optional[argparse.Namespace] = None,
                       injection_threshold: Optional[float] = None) -> None:
-    """Run the core Rose application startup and main loop."""
+    """Run the core Kaleido application startup and main loop."""
     # Check for single instance before doing anything else
     check_single_instance()
+    _remove_unpacked_mods_while_alone()
 
     # Keep the Windows "Apps & features" version in sync after auto-updates
     _update_registry_version()
@@ -532,7 +674,14 @@ def run_league_unlock(args: Optional[argparse.Namespace] = None,
     
     # Check initial status (will show locked until all components are ready)
     app_status.update_status(force=True)
-    
+
+    # Mods an earlier Rose stored as folders become the archives LTK Manager
+    # installs as they are. Before anything else starts: no injection, import
+    # or mod list may touch a folder while it is converted
+    convert_stored_mods(tray_manager)
+
+    _sync_mods_changed_while_closed()
+
     # Initialize core components
     lcu, skin_scraper, state, injection_manager = initialize_core_components(args, injection_threshold)
     
@@ -592,7 +741,7 @@ def run_league_unlock(args: Optional[argparse.Namespace] = None,
         tray_manager.shared_state = state  # Kaleido: tray menu reads pause state / profile
 
         def updated_tray_restart_callback():
-            """Callback for tray restart - relaunch Rose after this process exits"""
+            """Callback for tray restart - relaunch Kaleido after this process exits"""
             log.info("Restart requested from tray - scheduling relaunch")
             if not _schedule_restart():
                 log.warning("Restart scheduling failed; Rose will quit without relaunching")
@@ -625,21 +774,46 @@ def run_league_unlock(args: Optional[argparse.Namespace] = None,
             timeout_thread.start()
 
         tray_manager.restart_callback = updated_tray_restart_callback
+
+        # A Quit or Restart clicked while Rose was starting runs now
+        tray_manager.run_pending_request()
+
+    # Stopped while starting (a Quit or Restart clicked then): end before the
+    # threads start and Pengu's activation restarts a running client
+    if state.stop:
+        perform_cleanup(state, ThreadManager(), tray_manager, injection_manager)
+        return
     
     # Initialize threads (this starts the WebSocket server)
     thread_manager, t_phase, t_ui, t_ws, t_lcu_monitor = initialize_threads(
         lcu, state, args, injection_manager, skin_scraper, app_status, on_lcu_disconnected, on_lcu_reconnected
     )
-    
-    # Wait for WebSocket status to be active before activating Pengu Loader
-    log.info("Waiting for WebSocket status to be active before activating Pengu Loader...")
+
+    # Activate Pengu now rather than once a client runs: a client started after
+    # Rose then loads the plugins itself instead of starting without them and
+    # waiting for a restart. A running client is restarted (the bridge is up).
+    log.info("Activating Pengu Loader...")
+    pengu_active = pengu_loader.activate_on_start(get_config_option("General", "clientPath"))
+    if not pengu_active:
+        log.warning("Pengu Loader could not be activated yet; retrying once the client is up")
+
+    # Wait for WebSocket status to be active before setting up the injection system
+    log.info("Waiting for WebSocket status to be active...")
     while not t_ws.connection.is_connected:
         time.sleep(0.1)
-    
+
     log.info("WebSocket status is active, proceeding with Pengu Loader and injection system setup")
-    
+
+    # A restart the client refused while it was still starting goes through now
+    pengu_loader.retry_deferred_restart()
+
     # Setup Pengu Loader and injection system (LCU is already connected when WebSocket is active)
-    _setup_pengu_and_injection(lcu, injection_manager)
+    _setup_pengu_and_injection(lcu, injection_manager, activate_pengu=not pengu_active)
+
+    from utils.integration.startup_verifier import StartupInjectionVerifier
+    verifier = StartupInjectionVerifier(lcu, state, t_ui.websocket_server, _warn_pengu_injection_failed)
+    thread_manager.register("Startup injection verifier", verifier, stop_method=verifier.stop)
+    verifier.start()
     
     # Run main loop
     try:
@@ -649,14 +823,40 @@ def run_league_unlock(args: Optional[argparse.Namespace] = None,
         perform_cleanup(state, thread_manager, tray_manager, injection_manager)
 
 
-def main() -> None:
-    """Program entry point that prepares and launches Rose."""
-    # Check for required DLL before anything else
-    if not _check_dll_present():
-        sys.exit(1)
+def _remove_ltk_mods() -> int:
+    """Remove from LTK Manager's library the mods Kaleido added there
+    (ltk_library.remove_rose_mods): Kaleido's uninstaller runs Kaleido with
+    --remove-ltk-mods when the user does not keep Kaleido's data. It checked
+    that Rose is closed and waits for this, hidden: no single-instance check,
+    no launcher, no dialog, and a watchdog ends it should LTK Manager hang."""
+    import threading
 
+    from config import UNINSTALL_CLEANUP_DEADLINE_S
+    from injection.overlay.ltf_session import LtfHost
+    from injection.overlay.ltk_library import remove_rose_mods
+    from utils.core.logging import exit_now, setup_logging
+    from utils.core.paths import get_injection_dir, get_tools_dir
+
+    setup_logging('customer')
+    watchdog = threading.Timer(UNINSTALL_CLEANUP_DEADLINE_S, exit_now, args=(1,))
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        return remove_rose_mods(LtfHost(get_tools_dir(), get_injection_dir()))
+    except Exception as e:
+        log.error(f"[MODS] Could not remove Rose's mods from LTK Manager's library: {e}", exc_info=True)
+        return 1
+
+
+def main() -> None:
+    """Program entry point that prepares and launches Kaleido."""
     args = setup_arguments()
+    if args.uninstaller_removes_ltk_mods:
+        sys.exit(_remove_ltk_mods())
+    # Update before checking the DLL: a Rose that refuses to start still
+    # receives the version that fixes its check
     if sys.platform == "win32":
+        check_single_instance()
         if not args.dev:
             try:
                 from launcher import run_launcher
@@ -668,6 +868,9 @@ def main() -> None:
                 print(f"[Launcher] Unable to import launcher module: {err}")
             except Exception as err:  # noqa: BLE001
                 print(f"[Launcher] Launcher encountered an error: {err}")
+
+    if not _check_dll_present():
+        sys.exit(1)
 
     run_league_unlock(args=args)
 
@@ -686,14 +889,14 @@ if __name__ == "__main__":
                 "error",
                 "Kaleido crashed unexpectedly.",
                 details={"type": type(e).__name__, "error": str(e)},
-                hint="Check %LOCALAPPDATA%\\Kaleido\\logs\\ for details.",
+                hint="Check %LOCALAPPDATA%\\Rose\\logs\\ for details.",
             )
         except Exception:
             pass
         
         error_msg = f"""
 ================================================================================
-FATAL ERROR - Kaleido Crashed
+FATAL ERROR - Rose Crashed
 ================================================================================
 Error: {e}
 Type: {type(e).__name__}
@@ -721,7 +924,7 @@ Log location: Check %LOCALAPPDATA%\\Rose\\logs\\
             try:
                 ctypes.windll.user32.MessageBoxW(
                     0,
-                    f"Kaleido crashed with an unhandled error:\n\n{str(e)}\n\nError type: {type(e).__name__}\n\nPlease check the log file in:\n%LOCALAPPDATA%\\Kaleido\\logs\\",
+                    f"Kaleido crashed with an unhandled error:\n\n{str(e)}\n\nError type: {type(e).__name__}\n\nPlease check the log file in:\n%LOCALAPPDATA%\\Rose\\logs\\",
                     "Kaleido - Fatal Error",
                     0x50010  # MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST
                 )
